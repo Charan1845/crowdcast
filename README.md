@@ -30,6 +30,8 @@
 | Counting | Mall dataset | Fixed-camera video frames for testing on video |
 | Forecasting | Melbourne Pedestrian Counting System | Years of real hourly sensor counts, including holidays and events |
 
+Full details (sizes, label formats, licenses, download links): [DATASETS.md](DATASETS.md)
+
 ## Roadmap (about 6 weeks, from Oct 4, 2026)
 
 - [ ] **Week 1**: Project setup, dataset download and exploration, choose counting approach
