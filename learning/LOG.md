@@ -15,6 +15,16 @@ Crowdcast is being built as a learning project: each entry is a concept learned,
 
 **Why it matters for Crowdcast:** whichever counting approach gets picked (YOLO boxes vs CSRNet density maps), the model's output is itself just another array the same height/width as the input — "image = array" is the one idea underneath both.
 
-**Applied step (next implementation session):** download one ShanghaiTech sample image, load it with Pillow, convert to a NumPy array, print `shape` / `dtype` / `min` / `max`, confirm it matches what's described above on real data.
+**Applied step (2026-10-08):** downloaded one real ShanghaiTech Part A image (`IMG_1.jpg`, via Kaggle mirror) and inspected it — see [lesson_01_image_as_array.py](lesson_01_image_as_array.py).
 
-**Status:** concept covered. Applied step not yet done — dataset isn't downloaded yet.
+Real results:
+```
+PIL size (width, height): (1024, 704)
+NumPy shape (height, width, channels): (704, 1024, 3)
+dtype: uint8
+min/max pixel value: 0 / 255
+mean brightness: 118.46
+```
+Confirms the concept exactly: PIL reports (width, height), NumPy flips it to (height, width, channels) — the gotcha called out above, now seen on real data, not just a toy example.
+
+**Status:** done — concept covered and applied on real data.
