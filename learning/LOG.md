@@ -44,3 +44,19 @@ Confirms the concept exactly: PIL reports (width, height), NumPy flips it to (he
 **Applied step (2026-10-08):** loaded `GT_IMG_1.mat` (paired with yesterday's `IMG_1.jpg`), extracted the 172 head points, verified `len(points) == stated count` (172 == 172), and plotted the points over the image — see [lesson_02_head_point_annotations.py](lesson_02_head_point_annotations.py).
 
 **Status:** done — concept covered and applied on real data (172 head points confirmed two ways, overlay generated).
+
+---
+
+### Lesson 0.3 — Density maps from head points (2026-10-10)
+
+**Concept:** convert sparse head points into a smooth training target.
+- A single "1 at this exact pixel" label is too sparse/brittle to train a CNN on directly — a prediction a few pixels off would be scored as completely wrong.
+- Fix: place each point as a `1` on an all-zero map, then blur the whole map with a Gaussian filter (`scipy.ndimage.gaussian_filter`). Nearby pixels now carry smooth, partial values instead of one isolated spike.
+- The key invariant: a Gaussian is normalized to sum to 1, so **the blur doesn't lose the count** — summing the entire finished density map still equals the number of people. This is what makes "sum of predicted map = estimated count" work at inference time, with no peak-detection step needed.
+- Real crowd-counting methods (MCNN/CSRNet) use a **geometry-adaptive** kernel: blob width scaled to each point's distance to its nearest neighbors, so dense areas get tight blobs (avoiding merging) and sparse areas get wider ones. This lesson uses a simpler **fixed-width** Gaussian (`sigma=15`) as a first pass — adaptive sigma is a later refinement, not a prerequisite to understanding the core idea.
+
+**Why it matters for Crowdcast:** this is the actual training target a density-estimation model (CSRNet) learns to output. Everything from Lesson 0.1 (image = array) and 0.2 (points = ground truth) feeds directly into building this one array.
+
+**Applied step (2026-10-10):** built a density map from `IMG_1.jpg`'s 172 points, verified `sum(point_map) == sum(density_map) == 172.0` exactly (before and after blur), and visualized points vs. density heatmap side by side — see [lesson_03_density_map.py](lesson_03_density_map.py).
+
+**Status:** done — concept covered and applied on real data (sum-preservation verified, not just assumed).
