@@ -1,1 +1,7 @@
-# Dependencies will be added as the counting and forecasting approaches are chosen (see DECISIONS.md).
+# Used so far, in learning/ (Lessons 0.1-0.3). More will be added as the
+# counting and forecasting approaches are chosen (see DECISIONS.md).
+numpy==2.5.2
+pillow==12.3.0
+scipy==1.18.1
+matplotlib==3.11.2
+kaggle==2.2.4
