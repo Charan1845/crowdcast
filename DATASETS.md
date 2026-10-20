@@ -29,7 +29,7 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 - **Labels:** A `.mat` file per image (e.g. `GT_IMG_1.mat`) holding the (x, y) position of each person's head.
 - **Get it:** Official repo [desenzhou/ShanghaiTechDataset](https://github.com/desenzhou/ShanghaiTechDataset) (Dropbox / Baidu links), or a [Kaggle mirror](https://www.kaggle.com/datasets/tthien/shanghaitech).
 - **License:** The official repo carries a BSD-2-Clause license.
-- **Known issue:** Users have reported some [ground-truth inconsistencies in Part B](https://github.com/desenzhou/ShanghaiTechDataset/issues/2).
+- **Known issue:** Users have reported some [ground-truth inconsistencies in Part B](https://github.com/desenzhou/ShanghaiTechDataset/issues/2). We also found, while batch-processing Part A (`notebooks/01_data_pipeline.ipynb`), that 24/482 images (~5%) have 1-2 annotated head points landing just outside the image's pixel bounds — those points are dropped from the density map, so `stated_count` is used as the training label rather than the density map's own sum wherever the two differ.
 - **Plan:** Our **first dataset**. It's small and well documented, and almost every paper reports results on it, so our MAE is directly comparable.
 
 ### JHU-Crowd++
