@@ -24,10 +24,13 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 **Decision:** The counting model starts from pretrained weights (VGG-16 on ImageNet as CSRNet's front end; COCO-pretrained weights for YOLO) and is fine-tuned on ShanghaiTech. A small CNN trained from scratch is built once as a learning exercise and comparison point. Forecasting does not use transfer learning (baseline → Prophet → LSTM trained on the Melbourne data).
 **Why:** ShanghaiTech has only 300 (Part A) / 400 (Part B) training images, which is too few to train a deep network from zero without overfitting. Pretrained models already recognise edges, shapes and people, so fine-tuning is faster and more accurate. Comparing against a from-scratch model measures how much transfer learning actually helps, instead of just claiming it. Pretrained image models don't apply to tabular time series, and years of Melbourne data are enough to train forecasting models directly.
 
+### 6. CSRNet (VGG-16 front end) over YOLO, built in TensorFlow/Keras (2026-10-21)
+**Decision:** The counting model is CSRNet-style density estimation, with a VGG-16/ImageNet front end (per Decision #5) fine-tuned on ShanghaiTech, implemented in TensorFlow/Keras.
+**Why:** Phase 1's real counts on Part A range 33-3,138 people per image, averaging 541 — dense enough that individual heads overlap and occlude heavily. YOLO would need a distinct box around each of ~500+ overlapping people, exactly the failure mode box-detection struggles with at that density. CSRNet's density map never needs to separate individuals, just get the local density right, which is what the point annotations (Lesson 0.2) and cached density maps (Phase 1) already produce directly. Keras ships VGG-16/ImageNet weights (`tf.keras.applications.VGG16`), so the pretrained front end is available the same way in TensorFlow as in PyTorch; the dilated-convolution back end is built directly from the CSRNet paper's spec rather than adapted from existing (mostly PyTorch) reference code.
+
 ---
 
 ## Open decisions
 
-- **Counting approach:** YOLO (detects each person; good for sparse scenes) vs CSRNet-style density estimation (handles dense, overlapping crowds), either way starting from pretrained weights (see #5)
 - **Forecasting model:** Prophet vs LSTM (or similar)
 - **App framework:** Streamlit vs a custom web app
