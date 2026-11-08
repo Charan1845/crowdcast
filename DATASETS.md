@@ -16,7 +16,7 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 | JHU-Crowd++ | Counting (dense, varied conditions) | 4,372 images, ~2.9 GB | Head points, approx. boxes, blur, occlusion | CC BY 4.0, academic / non-commercial, cite paper |
 | UCF-QNRF | Counting (very dense) | 1,535 images, ~4.3 GB | Head points | **(to verify)**, research use, cite paper |
 | Mall | Counting on video frames | 2,000 frames, 640×480 | Head points | Research only, non-commercial, cite paper |
-| Melbourne Pedestrian Counting System | Forecasting | Hourly counts since 2009 | Count per sensor per hour | City of Melbourne open data, **exact license to verify** |
+| Melbourne Pedestrian Counting System | Forecasting | Hourly counts, May 2009–Oct 2022 + Nov 2024–present (gap between) | Count per sensor per hour | CC BY 4.0 (verified 2026-11-07) |
 
 ---
 
@@ -29,7 +29,7 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 - **Labels:** A `.mat` file per image (e.g. `GT_IMG_1.mat`) holding the (x, y) position of each person's head.
 - **Get it:** Official repo [desenzhou/ShanghaiTechDataset](https://github.com/desenzhou/ShanghaiTechDataset) (Dropbox / Baidu links), or a [Kaggle mirror](https://www.kaggle.com/datasets/tthien/shanghaitech).
 - **License:** The official repo carries a BSD-2-Clause license.
-- **Known issue:** Users have reported some [ground-truth inconsistencies in Part B](https://github.com/desenzhou/ShanghaiTechDataset/issues/2). We also found, while batch-processing Part A (`notebooks/01_data_pipeline.ipynb`), that 24/482 images (~5%) have 1-2 annotated head points landing just outside the image's pixel bounds — those points are dropped from the density map, so `stated_count` is used as the training label rather than the density map's own sum wherever the two differ.
+- **Known issue:** Users have reported some [ground-truth inconsistencies in Part B](https://github.com/desenzhou/ShanghaiTechDataset/issues/2). We also found, while batch-processing Part A in an earlier version of the pipeline, that 24/482 images (~5%) have 1-2 annotated head points landing just outside the image's pixel bounds — those points are dropped from the density map, so `stated_count` is used as the training label rather than the density map's own sum wherever the two differ.
 - **Plan:** Our **first dataset**. It's small and well documented, and almost every paper reports results on it, so our MAE is directly comparable.
 
 ### JHU-Crowd++
@@ -61,13 +61,17 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 ## Forecasting dataset
 
 ### Melbourne Pedestrian Counting System
-- **What:** Automated sensors across Melbourne's CBD counting people walking past, every hour, since 2009.
-- **Labels/fields:** Hourly counts per sensor, linked by `sensor_id` to a separate sensor-locations dataset.
-- **Updates:** Monthly.
-- **Get it:** [City of Melbourne Open Data Portal](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-monthly-counts-per-hour/information/) (CSV / API) · sensor locations: [map](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-sensor-locations/map/)
-- **License:** Published as open data by the City of Melbourne. Related datasets use Creative Commons Attribution licenses. **Exact license to verify** on the portal before publishing results.
-- **Why it fits:** Years of real data mean we can see daily, weekly and yearly patterns, and holidays and events. Any holiday or event claims will be made only if the data supports them.
-- **Note:** Some sensors were removed or moved over the years, so we'll need to pick sensors with long, continuous history.
+- **What:** Automated sensors across Melbourne's CBD counting people walking past, every hour.
+- **Comes in two parts, with a gap** (checked 2026-11-07):
+  - **Historical archive:** a zip attached to the dataset page (`Pedestrian_Counting_System_Monthly_counts_per_hour_may_2009_to_14_dec_2022.csv`). 4,562,230 rows, 82 sensors. Despite the filename, the data actually ends **2022-10-31**. Columns: `Date_Time, Year, Month, Mdate, Day, Time, Sensor_ID, Sensor_Name, Hourly_Counts`.
+  - **Live dataset (API/CSV export):** a **rolling 2-year window only** (2024-11-07 to 2026-11-06 when downloaded), 1,629,587 rows, 102 sensors. Columns: `location_id, sensing_date, hourday, direction_1, direction_2, pedestriancount, sensor_name, location`.
+  - **Gap:** Nov 2022 – Nov 2024 is no longer downloadable from either source. Older live data rolls off as new data comes in, so re-downloading later shifts the window.
+- **Schemas differ:** column names differ between the two parts, and whether `Sensor_ID` (archive) and `location_id` (live) refer to the same physical sensors still needs checking before joining them.
+- **Sensor locations:** separate dataset, `pedestrian-counting-system-sensor-locations`.
+- **Get it:** [City of Melbourne Open Data Portal](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-monthly-counts-per-hour/information/) (archive is under the dataset's attachments) · sensor locations: [map](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-sensor-locations/map/)
+- **License:** CC BY 4.0 (verified via the portal API, 2026-11-07). Attribute the City of Melbourne.
+- **Why it fits:** 13+ years of real hourly data show daily, weekly and yearly patterns, plus holidays and events. Any holiday or event claims will be made only if the data supports them.
+- **Notes:** Some sensors were removed or moved over the years, so we'll need to pick sensors with long, continuous history. Melbourne had extended COVID lockdowns in 2020–2021, which will show up as a major disruption in the archive. Train/test splits need to account for that rather than ignore it.
 
 ---
 
