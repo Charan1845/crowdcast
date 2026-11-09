@@ -1,54 +1,97 @@
 # Crowdcast
 
-**Crowd counting from images and video, plus crowd forecasting from real pedestrian data.**
+**Count the people in a crowd photo, and (next) recommend the best time to visit a place.**
 
-> Status: 🚧 In progress. This README is updated as the project is built. Results below are filled in only with real measured numbers.
+> Status: 🚧 In progress. Results below are only real measured numbers, updated as the project is built.
 
 ## What it does
 
-1. **Count**: Upload an image or video, and Crowdcast estimates how many people are in it, with a density heatmap showing where the crowd is packed. For videos, it also plots the count over time.
-2. **Forecast**: Using years of real hourly pedestrian counts, Crowdcast predicts how busy a location will be at a given time, and compares its error against a simple "same time last week" baseline.
+1. **Count** (working): give it a crowd photo and it estimates how many people are in it, with a density heatmap showing where the crowd is packed.
+2. **Best time to visit** (planned): using years of real hourly pedestrian counts, show how busy a type of place usually is by hour and day, and suggest the quietest times.
 
-## Architecture (planned)
+## How the counting model works
+
+A **CSRNet**-style density-estimation model, built in TensorFlow/Keras with **transfer learning**:
 
 ```
- Images / Video ──► Counting model ──┐
- (public datasets for training,      │
-  real uploads for testing)          ▼
-                                 Web app (Streamlit / web)
-                                     ▲
- Hourly pedestrian counts ──► Forecasting model
- (Melbourne Pedestrian Counting System)
+ Crowd photo ──► VGG-16 front end ──► 6 dilated conv layers ──► density map ──► sum = people count
+                (pretrained on ImageNet,  (trained from scratch;
+                 last block fine-tuned)    wider view, no extra shrinking)
 ```
+
+- Instead of drawing a box around each person (which fails when hundreds of heads overlap), the model predicts a **density map**, and the people count is its sum.
+- Training labels come from head-position annotations, each turned into a small Gaussian blob that sums to 1 (geometry-adaptive kernel).
+- **Overfitting controls:**
+  - a held-out validation set
+  - keep only the best epoch
+  - early stopping
+  - random crop/flip augmentation
+  - VGG-16 frozen at first, then partly fine-tuned
+  - learning-rate halving when progress stalls
+  - L2 weight penalty
+
+Why CSRNet over YOLO, and why transfer learning: see [DECISIONS.md](DECISIONS.md) (#5, #6).
+
+## Results
+
+**ShanghaiTech Part A** (dense crowds, 182 test images, 66–2,256 people each). Lower is better.
+
+| Model | Test MAE | Test RMSE |
+|---|---|---|
+| Baseline: always guess the average count | 301.8 | 368.6 |
+| Crowdcast v1 (best of 5 epochs) | 94.3 | 130.7 |
+| **Crowdcast v2 (best of 20 epochs)** | **79.6** | **112.2** |
+| Published CSRNet paper (for reference) | 68.2 | 115.0 |
+
+- **MAE** is the average number of people the count is off by. The test images average 433 people, so v2 is off by about 18% on average.
+- **v1 → v2 changes:**
+  - lower learning rate
+  - fine-tuning only VGG-16's last block
+  - larger validation set
+  - more epochs with learning-rate halving
+
+  v2 is better than v1 at every crowd size.
+- **Known weakness:** v2 still overcounts the sparsest images (about +15 people) and undercounts the densest (about −40). The overall bias is near zero only because these cancel out.
+- **Training setup:** trained on a laptop CPU (no GPU). The published model trained for about 400 epochs; ours trained for 20.
+
+Notebooks with every cell's output:
+- [01_counting_model_partA.ipynb](notebooks/01_counting_model_partA.ipynb) (v1)
+- [02_counting_model_partA_v2.ipynb](notebooks/02_counting_model_partA_v2.ipynb) (v2, including the v1 vs v2 comparison)
+
+| Still to measure | Baseline | Crowdcast |
+|---|---|---|
+| Counting MAE, ShanghaiTech Part B (sparse streets) | – | – |
+| Best-time forecast error vs "same time last week" | – | – |
+
+## Progress
+
+- [x] Datasets downloaded and documented ([DATASETS.md](DATASETS.md))
+- [x] Counting model on ShanghaiTech Part A (v1, then improved v2)
+- [ ] Counting model on ShanghaiTech Part B
+- [ ] Best time to visit: hourly patterns by type of place, baseline vs forecasting model
+- [ ] Web app: upload a photo → count + heatmap; best-time tab
+- [ ] Live demo (Hugging Face Spaces / Streamlit Cloud)
 
 ## Data
 
 | Part | Dataset | Why |
 |---|---|---|
-| Counting | ShanghaiTech Part A/B | Standard benchmark, dense (A) and sparse street (B) scenes |
-| Counting | JHU-Crowd++ / UCF-QNRF | Very dense crowds, varied weather and lighting |
-| Counting | Mall dataset | Fixed-camera video frames for testing on video |
-| Forecasting | Melbourne Pedestrian Counting System | Years of real hourly sensor counts, including holidays and events |
+| Counting | ShanghaiTech Part A/B | Standard benchmark: dense (A) and sparse street (B) scenes |
+| Counting (optional) | JHU-Crowd++ / UCF-QNRF | Very dense crowds, varied weather and lighting |
+| Best time to visit | Melbourne Pedestrian Counting System | Years of real hourly sensor counts (CC BY 4.0) |
 
-Full details (sizes, label formats, licenses, download links): [DATASETS.md](DATASETS.md)
+Full details (sizes, label formats, licenses, download links): [DATASETS.md](DATASETS.md). Datasets and trained weights are not stored in this repo.
 
-## Roadmap (about 6 weeks, from Oct 4, 2026)
+## Run it yourself
 
-- [ ] **Week 1**: Project setup, dataset download and exploration, choose counting approach
-- [ ] **Week 2**: Train and evaluate the counting model (MAE on benchmark test sets)
-- [ ] **Week 3**: Forecasting: baseline ("same time last week") vs model, evaluated on held-out data
-- [ ] **Week 4**: App: image/video upload, count, density heatmap, forecasting tab
-- [ ] **Week 5**: Deploy a live demo (Hugging Face Spaces / Streamlit Cloud)
-- [ ] **Week 6**: Polish: results, architecture diagram, demo GIF, write-up
+Requires Python 3.12 (TensorFlow has no stable release for 3.14 yet).
 
-## Results
+```bash
+py -3.12 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+```
 
-_To be added with real measured numbers._
-
-| Metric | Baseline | Crowdcast |
-|---|---|---|
-| Counting MAE (ShanghaiTech) | – | – |
-| Forecast error vs "same time last week" | – | – |
+Download ShanghaiTech into `data/shanghaitech/` (see [DATASETS.md](DATASETS.md)), then run the notebooks in `notebooks/`. On CPU, TensorFlow's oneDNN option is turned off in the first cell, because it made full-image counting about 60× slower on our machine.
 
 ## Design decisions
 
