@@ -2,7 +2,9 @@
 
 **Count the people in a crowd photo, and find the best time to travel from a Namma Metro (Bengaluru) station.**
 
-> Status: 🚧 Working locally; live demo next. Every number below is a real measured result on held-out test data.
+**▶ Live demo: [crowdcast-charan.streamlit.app](https://crowdcast-charan.streamlit.app)**
+
+> Every number below is a real measured result on held-out test data. The free host puts the app to sleep after a few days without visitors; if you see a "wake up" button, it takes about a minute to start.
 
 | | Model | Result on unseen test data |
 |---|---|---|
@@ -157,6 +159,6 @@ On first start the app downloads the trained weights from the [weights-v1 releas
 - [x] Hourly metro crowd model: baseline vs weekly average vs XGBoost
 - [x] Streamlit app: count a crowd; metro crowd check (photo → count → best time to travel)
 - [x] Trained weights published as a GitHub Release; the app downloads them on first start
-- [ ] Live demo on Streamlit Community Cloud
+- [x] Live demo on Streamlit Community Cloud: [crowdcast-charan.streamlit.app](https://crowdcast-charan.streamlit.app)
 - [ ] Test the metro page with real Namma Metro photos
 - [ ] More cities when hourly data becomes available (e.g. Hyderabad Metro via RTI)
