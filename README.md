@@ -1,17 +1,34 @@
 # Crowdcast
 
-**Count the people in a crowd photo, and get the best time to travel from a Namma Metro (Bengaluru) station.**
+**Count the people in a crowd photo, and find the best time to travel from a Namma Metro (Bengaluru) station.**
 
-> Status: 🚧 In progress. Results below are only real measured numbers, updated as the project is built.
+> Status: 🚧 Working locally; live demo next. Every number below is a real measured result on held-out test data.
+
+| | Model | Result on unseen test data |
+|---|---|---|
+| 👥 **People counting**, street scenes | VGG-16 CSRNet (transfer learning) | **MAE 13.4** people (ShanghaiTech B; baseline 72.0, published 10.6) |
+| 👥 **People counting**, dense crowds | VGG-16 CSRNet (transfer learning) | **MAE 79.6** people (ShanghaiTech A; baseline 301.8, published 68.2) |
+| 🚇 **Hourly metro crowds**, 83 stations | XGBoost | **MAE 54.0** entries/hour, **14% better** than "same hour last week" |
 
 ## What it does
 
-1. **Count** (working, Streamlit app): upload a crowd photo and it estimates how many people are in it, with a heatmap showing where it found them.
-2. **Metro crowd check** (working, second app page): upload a photo taken at a Namma Metro station. The app counts the people in it, says how busy that hour usually is at that station, and suggests the best time to travel, with an estimate of how many people you'd see then. The time comes from the photo itself (or the current time), and the hourly pattern comes from an XGBoost model trained on real BMRCL ridership.
+A two-page Streamlit app:
 
-## How the counting model works
+1. **Count a crowd:** upload any crowd photo and get the number of people plus a heatmap of where they are. Choose *Street scene* or *Dense crowd* to pick the matching model.
+2. **Metro crowd check:** upload a photo taken at a Namma Metro station:
 
-A **CSRNet**-style density-estimation model, built in TensorFlow/Keras with **transfer learning**:
+```
+ Photo at a metro station ──► CSRNet counts the people ─────────────────┐
+                                                                          ├──► "91 people now · 6–7 pm is Very busy ·
+ Station + time (read from the photo, ──► XGBoost hourly crowd model ───┘      go at 9–10 pm: ~74% fewer people,
+ or the current time)                     (BMRCL ridership, 83 stations)         about 23 in a photo like this"
+```
+
+The "people you'd see then" figure scales your photo's count by how the suggested hour compares with the photo's hour at that station. It's labelled as an estimate (see [Limitations](#limitations)).
+
+## How it works
+
+### People counting: CSRNet with a VGG-16 front end
 
 ```
  Crowd photo ──► VGG-16 front end ──► 6 dilated conv layers ──► density map ──► sum = people count
@@ -19,22 +36,41 @@ A **CSRNet**-style density-estimation model, built in TensorFlow/Keras with **tr
                  last block fine-tuned)    wider view, no extra shrinking)
 ```
 
-- Instead of drawing a box around each person (which fails when hundreds of heads overlap), the model predicts a **density map**, and the people count is its sum.
-- Training labels come from head-position annotations, each turned into a small Gaussian blob that sums to 1 (geometry-adaptive kernel).
+- **Density map, not boxes.** Boxes around each person fail when hundreds of heads overlap. The model predicts a density map instead, and the count is its sum.
+- **Labels:** each annotated head becomes a small Gaussian blob summing to 1. Dense crowds use blob widths adapted to head spacing; street scenes use a fixed width (sigma 15).
+- **Transfer learning:** VGG-16's ImageNet weights are frozen first. Then only its last block is fine-tuned, at a low learning rate.
 - **Overfitting controls:**
-  - a held-out validation set
-  - keep only the best epoch
+  - a held-out validation set, with only the best epoch kept
   - early stopping
-  - random crop/flip augmentation
-  - VGG-16 frozen at first, then partly fine-tuned
+  - random crop and flip augmentation
   - learning-rate halving when progress stalls
-  - L2 weight penalty
+  - an L2 weight penalty
+- Built in TensorFlow/Keras and trained on a laptop CPU.
 
-Why CSRNet over YOLO, and why transfer learning: see [DECISIONS.md](DECISIONS.md) (#5, #6).
+### Hourly metro crowds: XGBoost
+
+- **Data:** real BMRCL hourly **station entries** for 83 Namma Metro stations, 1–18 Aug and 1–30 Sep 2025. That's 92,280 station-hours.
+- **Features:** station, day of week, hour, weekend, holiday. **Target:** people entering per hour.
+- **Training:** gradient-boosted trees with absolute-error loss, with the number of trees (2,370) chosen by early stopping on the last training week.
+- **Output:** the usual number of entries for every station × weekday × hour, saved as a small table ([app/data/metro_hourly_pattern.csv](app/data/metro_hourly_pattern.csv)) that the app looks up instantly.
+
+Why each choice was made (CSRNet over YOLO, transfer learning, Streamlit, Bengaluru Metro data): [DECISIONS.md](DECISIONS.md).
 
 ## Results
 
-**ShanghaiTech Part A** (dense crowds, 182 test images, 66–2,256 people each). Lower is better.
+### People counting: ShanghaiTech Part B (street scenes, 316 test images, 9–539 people each)
+
+| Model | Test MAE | Test RMSE |
+|---|---|---|
+| Baseline: always guess the average count | 72.0 | 95.1 |
+| **Crowdcast (best of 13 epochs)** | **13.4** | **20.6** |
+| Published CSRNet paper (for reference) | 10.6 | 16.0 |
+
+- The test images average 124 people, so the model is off by about **11%** on average.
+- Error grows with crowd size: about 3 people on the smallest crowds, about 25 on the largest.
+- **Stopped by hand:** training ended after 13 epochs, with no new best for 3 epochs and an already tiny learning rate. The best epoch (10) was saved during training and is the one tested. [Notebook](notebooks/03_counting_model_partB.ipynb)
+
+### People counting: ShanghaiTech Part A (dense crowds, 182 test images, 66–2,256 people each)
 
 | Model | Test MAE | Test RMSE |
 |---|---|---|
@@ -43,37 +79,13 @@ Why CSRNet over YOLO, and why transfer learning: see [DECISIONS.md](DECISIONS.md
 | **Crowdcast v2 (best of 20 epochs)** | **79.6** | **112.2** |
 | Published CSRNet paper (for reference) | 68.2 | 115.0 |
 
-- **MAE** is the average number of people the count is off by. The test images average 433 people, so v2 is off by about 18% on average.
-- **v1 → v2 changes:**
-  - lower learning rate
-  - fine-tuning only VGG-16's last block
-  - larger validation set
-  - more epochs with learning-rate halving
+- The test images average 433 people, so v2 is off by about **18%** on average.
+- **v1 → v2 changes:** a lower learning rate, fine-tuning only VGG-16's last block, a larger validation set, and more epochs with learning-rate halving. v2 beats v1 at every crowd size.
+- Notebooks: [v1](notebooks/01_counting_model_partA.ipynb), [v2 with the v1 vs v2 comparison](notebooks/02_counting_model_partA_v2.ipynb)
 
-  v2 is better than v1 at every crowd size.
-- **Known weakness:** v2 still overcounts the sparsest images (about +15 people) and undercounts the densest (about −40). The overall bias is near zero only because these cancel out.
-- **Training setup:** trained on a laptop CPU (no GPU). The published model trained for about 400 epochs; ours trained for 20.
+### Hourly metro crowds: Namma Metro, test week 22–30 Sep 2025 (never seen in training)
 
-Notebooks with every cell's output:
-- [01_counting_model_partA.ipynb](notebooks/01_counting_model_partA.ipynb) (v1)
-- [02_counting_model_partA_v2.ipynb](notebooks/02_counting_model_partA_v2.ipynb) (v2, including the v1 vs v2 comparison)
-
-**ShanghaiTech Part B** (sparse street scenes, 316 test images, 9–539 people each). Lower is better.
-
-| Model | Test MAE | Test RMSE |
-|---|---|---|
-| Baseline: always guess the average count | 72.0 | 95.1 |
-| **Crowdcast (best of 13 epochs)** | **13.4** | **20.6** |
-| Published CSRNet paper (for reference) | 10.6 | 16.0 |
-
-- **How it was trained:** the Part A v2 recipe, except the density maps use a fixed Gaussian width (sigma 15), as in the CSRNet paper, because the crowds are sparse.
-- **Accuracy:** the test images average 124 people, so the model is off by about 11% on average. Error grows with crowd size, from about 3 people on the smallest crowds (9–55) to about 25 on the largest (167–539).
-- **Known weakness:** like Part A, it tends to overcount sparse scenes (overall bias +4.6 people).
-- **Training was stopped by hand after 13 epochs:** there was no new best for 3 epochs and the learning rate was already very small. The best epoch (10) was saved during training and is the model tested here. The notebook says so and shows the full per-epoch history.
-
-Notebook: [03_counting_model_partB.ipynb](notebooks/03_counting_model_partB.ipynb)
-
-**Best time to travel: Namma Metro hourly crowds** (83 stations; trained on 1 Aug–21 Sep 2025, tested on the unseen week 22–30 Sep). The error is in people entering per station-hour, 6 am to 11 pm; an average station-hour has 516 people entering.
+Error is in people entering per station-hour, 6 am to 11 pm. An average station-hour has 516 people entering.
 
 | Model | Test MAE | vs baseline | Picks the quietest hour (9 am–9 pm) | Picks one of the 3 quietest |
 |---|---|---|---|---|
@@ -81,30 +93,43 @@ Notebook: [03_counting_model_partB.ipynb](notebooks/03_counting_model_partB.ipyn
 | Average weekly pattern | 56.3 | −10% | 77% | 95% |
 | **XGBoost** | **54.0** | **−14%** | **79%** | 94% |
 
-- **The target is station entries,** i.e. people boarding. August's file was checked against September's entries and exits before combining them: it matches entries, with an hourly-pattern correlation of 0.997.
-- **XGBoost's gain over a plain weekly average is small.** With 48 days of data, a simple average is already strong. An earlier XGBoost version trained on log counts scored 68, worse than the baseline. Training on raw counts with absolute-error loss fixed that.
-- **Limits:** the data is one city over two months. It shows normal days only, with no festivals or events, and the 15 stations that opened in August 2025 have fewer days of history.
+- **Entries, checked:** August's file only says "ridership". Its hourly pattern matches September's *entries* with a correlation of 0.997, and doesn't match exits, so both months are treated as entries.
+- **What didn't work first:** XGBoost trained on log counts scored 68, worse than the baseline, because the log scale under-weights busy hours. Raw counts with absolute-error loss fixed it.
+- **XGBoost's edge over a plain weekly average is small** (54.0 vs 56.3). With 48 days of data, the average is already strong. [Notebook](notebooks/04_metro_best_time.ipynb)
 
-Notebook: [04_metro_best_time.ipynb](notebooks/04_metro_best_time.ipynb)
+## Limitations
 
-## Progress
+- **Counting models** were trained on ShanghaiTech photos. Photos with very different angles, lighting or places may count less accurately. Both models still overcount sparse scenes a little.
+- **Metro patterns** cover one city over two months of **normal days**. Festivals, events, strikes and heavy rain aren't in the data, and the 15 stations that opened in August 2025 have less history.
+- **"People you'd see then"** assumes the crowd in your camera's view rises and falls with station entries. It's a sensible estimate, but it hasn't been tested against real platform photos yet.
+- **Real metro photos** haven't been tested yet. The metro page has only been tried with street-scene test photos so far.
 
-- [x] Datasets downloaded and documented ([DATASETS.md](DATASETS.md))
-- [x] Counting model on ShanghaiTech Part A (v1, then improved v2)
-- [x] Counting model on ShanghaiTech Part B
-- [x] Best time to travel: Namma Metro hourly crowds, baseline vs weekly pattern vs XGBoost
-- [x] Streamlit app with two pages: count a crowd photo; metro crowd check (photo → count → best time to travel). Runs locally; see below.
-- [ ] Live demo (Hugging Face Spaces / Streamlit Cloud)
+## Project layout
+
+```
+notebooks/
+  01_counting_model_partA.ipynb      CSRNet v1 on ShanghaiTech A
+  02_counting_model_partA_v2.ipynb   improved v2 + v1 vs v2 comparison
+  03_counting_model_partB.ipynb      CSRNet on ShanghaiTech B
+  04_metro_best_time.ipynb           Namma Metro hourly crowds: baseline vs weekly average vs XGBoost
+app/
+  streamlit_app.py                   entry point and page navigation
+  app_pages/count_crowd.py           page 1: count a crowd
+  app_pages/metro_best_time.py       page 2: metro crowd check
+  crowd_model.py, shared.py          model loading, counting, heatmap, photo time
+  data/metro_hourly_pattern.csv      XGBoost output used by page 2
+.streamlit/config.toml               app theme
+DECISIONS.md, DATASETS.md            why each choice was made; data sources and licenses
+```
 
 ## Data
 
-| Part | Dataset | Why |
+| Used for | Dataset | License / credit |
 |---|---|---|
-| Counting | ShanghaiTech Part A/B | Standard benchmark: dense (A) and sparse street (B) scenes |
-| Counting (optional) | JHU-Crowd++ / UCF-QNRF | Very dense crowds, varied weather and lighting |
-| Best time to travel | BMRCL (Namma Metro) station-wise hourly ridership, Aug–Sep 2025 | Real hourly entries for 83 Bengaluru stations, obtained through RTI by Vivek Mathew, published on [OpenCity](https://data.opencity.in/dataset/bmrcl-station-wise-ridership-data) (CC BY-NC) |
+| People counting | ShanghaiTech Part A/B (1,198 images with head annotations) | BSD-2-Clause (dataset repo) |
+| Hourly metro crowds | BMRCL station-wise hourly ridership, Aug–Sep 2025 | Obtained through RTI by Vivek Mathew, published on [OpenCity](https://data.opencity.in/dataset/bmrcl-station-wise-ridership-data); Creative Commons Non-Commercial |
 
-Full details (sizes, label formats, licenses, download links): [DATASETS.md](DATASETS.md). Datasets and trained weights are not stored in this repo.
+Details, file checks and quirks: [DATASETS.md](DATASETS.md). Raw datasets and trained weights are not stored in this repo.
 
 ## Run it yourself
 
@@ -115,16 +140,22 @@ py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Download ShanghaiTech into `data/shanghaitech/` (see [DATASETS.md](DATASETS.md)), then run the notebooks in `notebooks/`. They save the trained weights to `weights/`. On CPU, TensorFlow's oneDNN option is turned off in the first cell, because it made full-image counting about 60× slower on our machine.
-
-Then start the app:
+1. Download ShanghaiTech into `data/shanghaitech/` and the BMRCL files into `data/bmrcl/` (see [DATASETS.md](DATASETS.md)).
+2. Run the notebooks in `notebooks/`. They save the trained counting weights to `weights/`. The metro table is already in the repo, but notebook 04 rebuilds it. On CPU, TensorFlow's oneDNN option is turned off in the first cell, because it made full-image counting about 60× slower on our machine.
+3. Start the app:
 
 ```bash
 .venv\Scripts\streamlit run app/streamlit_app.py
 ```
 
-Choose **Dense crowd** (Part A model) or **Street scene** (Part B model), upload a photo, and you get the count and a heatmap. On a laptop CPU each photo takes about 2 seconds. Trained weights are not in this repo yet (about 180 MB each), so the app needs the notebooks to have been run first.
+Counting a photo takes about 2 seconds on a laptop CPU. The trained weights (about 180 MB each) aren't in this repo yet, so the app needs the notebooks to have been run first. They'll be hosted with the live demo.
 
-## Design decisions
+## Progress
 
-See [DECISIONS.md](DECISIONS.md) for every major decision and the reasoning behind it.
+- [x] Datasets downloaded and documented
+- [x] People counting on ShanghaiTech Part A (v1, then improved v2) and Part B
+- [x] Hourly metro crowd model: baseline vs weekly average vs XGBoost
+- [x] Streamlit app: count a crowd; metro crowd check (photo → count → best time to travel)
+- [ ] Live demo (Hugging Face Spaces), with the trained weights hosted there
+- [ ] Test the metro page with real Namma Metro photos
+- [ ] More cities when hourly data becomes available (e.g. Hyderabad Metro via RTI)
