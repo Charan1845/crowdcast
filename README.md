@@ -6,7 +6,7 @@
 
 ## What it does
 
-1. **Count** (working): give it a crowd photo and it estimates how many people are in it, with a density heatmap showing where the crowd is packed.
+1. **Count** (working, Streamlit app): upload a crowd photo and it estimates how many people are in it, with a heatmap showing where it found them.
 2. **Best time to visit** (planned): using years of real hourly pedestrian counts, show how busy a type of place usually is by hour and day, and suggest the quietest times.
 
 ## How the counting model works
@@ -83,7 +83,8 @@ Notebook: [03_counting_model_partB.ipynb](notebooks/03_counting_model_partB.ipyn
 - [x] Counting model on ShanghaiTech Part A (v1, then improved v2)
 - [x] Counting model on ShanghaiTech Part B
 - [ ] Best time to visit: hourly patterns by type of place, baseline vs forecasting model
-- [ ] Web app: upload a photo → count + heatmap; best-time tab
+- [x] Streamlit app: upload a photo → count + heatmap (runs locally; see below)
+- [ ] Best-time tab in the app
 - [ ] Live demo (Hugging Face Spaces / Streamlit Cloud)
 
 ## Data
@@ -105,7 +106,15 @@ py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Download ShanghaiTech into `data/shanghaitech/` (see [DATASETS.md](DATASETS.md)), then run the notebooks in `notebooks/`. On CPU, TensorFlow's oneDNN option is turned off in the first cell, because it made full-image counting about 60× slower on our machine.
+Download ShanghaiTech into `data/shanghaitech/` (see [DATASETS.md](DATASETS.md)), then run the notebooks in `notebooks/`. They save the trained weights to `weights/`. On CPU, TensorFlow's oneDNN option is turned off in the first cell, because it made full-image counting about 60× slower on our machine.
+
+Then start the app:
+
+```bash
+.venv\Scripts\streamlit run app/streamlit_app.py
+```
+
+Choose **Dense crowd** (Part A model) or **Street scene** (Part B model), upload a photo, and you get the count and a heatmap. On a laptop CPU each photo takes about 2 seconds. Trained weights are not in this repo yet (about 180 MB each), so the app needs the notebooks to have been run first.
 
 ## Design decisions
 

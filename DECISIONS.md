@@ -28,9 +28,12 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 **Decision:** The counting model is CSRNet-style density estimation, with a VGG-16/ImageNet front end (per Decision #5) fine-tuned on ShanghaiTech, implemented in TensorFlow/Keras.
 **Why:** Phase 1's real counts on Part A range 33-3,138 people per image, averaging 541 — dense enough that individual heads overlap and occlude heavily. YOLO would need a distinct box around each of ~500+ overlapping people, exactly the failure mode box-detection struggles with at that density. CSRNet's density map never needs to separate individuals, just get the local density right, which is what the point annotations (Lesson 0.2) and cached density maps (Phase 1) already produce directly. Keras ships VGG-16/ImageNet weights (`tf.keras.applications.VGG16`), so the pretrained front end is available the same way in TensorFlow as in PyTorch; the dilated-convolution back end is built directly from the CSRNet paper's spec rather than adapted from existing (mostly PyTorch) reference code.
 
+### 7. Streamlit for the app, not a custom web app (2026-11-10)
+**Decision:** The demo is a Streamlit app (`app/streamlit_app.py`): upload a photo, choose the crowd type (Dense crowd uses the Part A model, Street scene uses the Part B model), and get a count plus a density heatmap. Each result shows that model's measured test error.
+**Why:** The project is about the model and the data, not front-end work. Streamlit turns the Python inference code into a usable page with very little extra code, and it deploys directly to Hugging Face Spaces or Streamlit Community Cloud. Two models are offered instead of one because each was trained on a different crowd density (Part A test MAE 79.6, Part B 13.4). Using the dense model on a sparse street scene, or the reverse, would give worse counts.
+
 ---
 
 ## Open decisions
 
-- **Forecasting model:** Prophet vs LSTM (or similar)
-- **App framework:** Streamlit vs a custom web app
+- **Forecasting model:** Prophet vs LSTM (or similar), with XGBoost as a candidate
