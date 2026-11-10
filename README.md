@@ -58,16 +58,30 @@ Notebooks with every cell's output:
 - [01_counting_model_partA.ipynb](notebooks/01_counting_model_partA.ipynb) (v1)
 - [02_counting_model_partA_v2.ipynb](notebooks/02_counting_model_partA_v2.ipynb) (v2, including the v1 vs v2 comparison)
 
+**ShanghaiTech Part B** (sparse street scenes, 316 test images, 9–539 people each). Lower is better.
+
+| Model | Test MAE | Test RMSE |
+|---|---|---|
+| Baseline: always guess the average count | 72.0 | 95.1 |
+| **Crowdcast (best of 13 epochs)** | **13.4** | **20.6** |
+| Published CSRNet paper (for reference) | 10.6 | 16.0 |
+
+- **How it was trained:** the Part A v2 recipe, except the density maps use a fixed Gaussian width (sigma 15), as in the CSRNet paper, because the crowds are sparse.
+- **Accuracy:** the test images average 124 people, so the model is off by about 11% on average. Error grows with crowd size, from about 3 people on the smallest crowds (9–55) to about 25 on the largest (167–539).
+- **Known weakness:** like Part A, it tends to overcount sparse scenes (overall bias +4.6 people).
+- **Training was stopped by hand after 13 epochs:** there was no new best for 3 epochs and the learning rate was already very small. The best epoch (10) was saved during training and is the model tested here. The notebook says so and shows the full per-epoch history.
+
+Notebook: [03_counting_model_partB.ipynb](notebooks/03_counting_model_partB.ipynb)
+
 | Still to measure | Baseline | Crowdcast |
 |---|---|---|
-| Counting MAE, ShanghaiTech Part B (sparse streets) | – | – |
 | Best-time forecast error vs "same time last week" | – | – |
 
 ## Progress
 
 - [x] Datasets downloaded and documented ([DATASETS.md](DATASETS.md))
 - [x] Counting model on ShanghaiTech Part A (v1, then improved v2)
-- [ ] Counting model on ShanghaiTech Part B
+- [x] Counting model on ShanghaiTech Part B
 - [ ] Best time to visit: hourly patterns by type of place, baseline vs forecasting model
 - [ ] Web app: upload a photo → count + heatmap; best-time tab
 - [ ] Live demo (Hugging Face Spaces / Streamlit Cloud)
