@@ -11,6 +11,7 @@ env/
 
 # Data (large; never commit datasets)
 data/
+!app/data/
 datasets/
 *.zip
 *.tar

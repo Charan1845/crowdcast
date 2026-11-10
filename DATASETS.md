@@ -16,7 +16,8 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 | JHU-Crowd++ | Counting (dense, varied conditions) | 4,372 images, ~2.9 GB | Head points, approx. boxes, blur, occlusion | CC BY 4.0, academic / non-commercial, cite paper |
 | UCF-QNRF | Counting (very dense) | 1,535 images, ~4.3 GB | Head points | **(to verify)**, research use, cite paper |
 | Mall | Counting on video frames | 2,000 frames, 640×480 | Head points | Research only, non-commercial, cite paper |
-| Melbourne Pedestrian Counting System | Forecasting | Hourly counts, May 2009–Oct 2022 + Nov 2024–present (gap between) | Count per sensor per hour | CC BY 4.0 (verified 2026-11-07) |
+| BMRCL Namma Metro station-wise hourly ridership | Best time to travel (used) | 1–18 Aug + 1–30 Sep 2025, 83 stations | Hourly entries per station (Sep also exits) | Creative Commons Non-Commercial; via RTI (Vivek Mathew), published on OpenCity |
+| Melbourne Pedestrian Counting System | Forecasting (not used, see DECISIONS #8) | Hourly counts, May 2009–Oct 2022 + Nov 2024–present (gap between) | Count per sensor per hour | CC BY 4.0 (verified 2026-11-07) |
 
 ---
 
@@ -58,7 +59,19 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 
 ---
 
-## Forecasting dataset
+## Best time to travel dataset
+
+### BMRCL (Namma Metro) station-wise hourly ridership
+- **What:** Hourly counts per Bengaluru Metro station, from BMRCL, obtained through an RTI request by Vivek Mathew and published on [OpenCity](https://data.opencity.in/dataset/bmrcl-station-wise-ridership-data).
+- **Files used** (downloaded 2026-11-10 into `data/bmrcl/`, not committed):
+  - `Station-wise Hourly Data - August 2025`: 1–18 Aug 2025, one row per station per day, 24 hourly columns plus a total. 239 KB; MD5 matches OpenCity's published hash.
+  - `Station-wise Hourly Entry and Exit Data - September 2025`: 1–30 Sep 2025, separate Entry and Exit sheets, same layout.
+  - `Station Codes Used in the Files`: code to name mapping. Not needed, since station names are in the data.
+- **What "ridership" means:** August's file doesn't say. Its hourly pattern matches September's **entries** (correlation 0.997 at MG Road), not exits (0.27), and station daily totals line up with entries (median ratio 0.96). So both months are treated as **entries**.
+- **Quirks:** station 111 is called "Bangalore City Station" in August and "KSR Railway Station" in September, so stations are matched by code. 15 stations opened during August 2025 (9 on 11 Aug); days before opening are dropped. 83 stations, 48 days, 92,280 station-hours, no missing values.
+- **License:** the dataset page says Creative Commons Non-Commercial; the resource page says CC BY-NC-SA 4.0. Treat it as **non-commercial with attribution, share-alike**. The derived `app/data/metro_hourly_pattern.csv` carries the same terms.
+
+## Forecasting dataset (planned earlier, not used)
 
 ### Melbourne Pedestrian Counting System
 - **What:** Automated sensors across Melbourne's CBD counting people walking past, every hour.
@@ -78,6 +91,6 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 ## Order of use
 
 1. **ShanghaiTech:** learn the data format, density maps and the first counting model
-2. **Melbourne:** time-series basics and forecasting
+2. **BMRCL Namma Metro:** best time to travel (replaced the Melbourne plan; see DECISIONS #8)
 3. **Mall:** test counting on video frames
 4. **JHU-Crowd++ / UCF-QNRF:** optional, if time allows

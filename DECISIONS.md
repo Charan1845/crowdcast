@@ -32,8 +32,14 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 **Decision:** The demo is a Streamlit app (`app/streamlit_app.py`): upload a photo, choose the crowd type (Dense crowd uses the Part A model, Street scene uses the Part B model), and get a count plus a density heatmap. Each result shows that model's measured test error.
 **Why:** The project is about the model and the data, not front-end work. Streamlit turns the Python inference code into a usable page with very little extra code, and it deploys directly to Hugging Face Spaces or Streamlit Community Cloud. Two models are offered instead of one because each was trained on a different crowd density (Part A test MAE 79.6, Part B 13.4). Using the dense model on a sparse street scene, or the reverse, would give worse counts.
 
+### 8. "Best time to travel" uses Bengaluru Metro data, not Melbourne or place-level estimates (2026-11-10)
+**Decision:** The best-time feature is a **photo-driven metro crowd check**. The user uploads a photo taken at a **Namma Metro (Bengaluru) station**, the CSRNet model counts the people, and the app recommends the least crowded hour to travel from that station, using BMRCL's station-wise hourly ridership for Aug–Sep 2025 (obtained through RTI, published on OpenCity). It replaces the Melbourne pedestrian plan in Decision #2.
+**Why:** The goal changed to India-only. No free hourly crowd data exists for Indian temples, malls or tourist spots, and published tourism statistics are yearly or monthly. Metro entries near a place would measure commuters, not visitors, so using them to advise "when to visit the temple" would be invalid. The data answers exactly one question honestly: how crowded a station is each hour. That is the feature. Hyderabad was preferred, but no public station-level hourly ridership could be found for it. If such data becomes available (for example through an RTI to HMRL), the same notebook and app page can use it.
+**Models:** Same hour last week (baseline) vs average weekly pattern vs XGBoost, tested on an unseen final week. XGBoost won narrowly (MAE 54.0 vs 56.3 vs 62.7) and powers the app.
+**How the two models connect:** the photo's time is read from its EXIF data (or the current time). The "people you'd see then" figure scales the photo's count by the ratio of usual entries in the suggested hour to the photo's hour. This assumes the visible crowd rises and falls with station entries, so the app labels it an estimate.
+
 ---
 
 ## Open decisions
 
-- **Forecasting model:** Prophet vs LSTM (or similar), with XGBoost as a candidate
+- **Deployment:** where to host the app (Hugging Face Spaces or Streamlit Community Cloud), and where to store the ~180 MB trained weights.

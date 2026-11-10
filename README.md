@@ -1,13 +1,13 @@
 # Crowdcast
 
-**Count the people in a crowd photo, and (next) recommend the best time to visit a place.**
+**Count the people in a crowd photo, and get the best time to travel from a Namma Metro (Bengaluru) station.**
 
 > Status: 🚧 In progress. Results below are only real measured numbers, updated as the project is built.
 
 ## What it does
 
 1. **Count** (working, Streamlit app): upload a crowd photo and it estimates how many people are in it, with a heatmap showing where it found them.
-2. **Best time to visit** (planned): using years of real hourly pedestrian counts, show how busy a type of place usually is by hour and day, and suggest the quietest times.
+2. **Metro crowd check** (working, second app page): upload a photo taken at a Namma Metro station. The app counts the people in it, says how busy that hour usually is at that station, and suggests the best time to travel, with an estimate of how many people you'd see then. The time comes from the photo itself (or the current time), and the hourly pattern comes from an XGBoost model trained on real BMRCL ridership.
 
 ## How the counting model works
 
@@ -73,18 +73,27 @@ Notebooks with every cell's output:
 
 Notebook: [03_counting_model_partB.ipynb](notebooks/03_counting_model_partB.ipynb)
 
-| Still to measure | Baseline | Crowdcast |
-|---|---|---|
-| Best-time forecast error vs "same time last week" | – | – |
+**Best time to travel: Namma Metro hourly crowds** (83 stations; trained on 1 Aug–21 Sep 2025, tested on the unseen week 22–30 Sep). The error is in people entering per station-hour, 6 am to 11 pm; an average station-hour has 516 people entering.
+
+| Model | Test MAE | vs baseline | Picks the quietest hour (9 am–9 pm) | Picks one of the 3 quietest |
+|---|---|---|---|---|
+| Baseline: same hour last week | 62.7 | – | 74% | 93% |
+| Average weekly pattern | 56.3 | −10% | 77% | 95% |
+| **XGBoost** | **54.0** | **−14%** | **79%** | 94% |
+
+- **The target is station entries,** i.e. people boarding. August's file was checked against September's entries and exits before combining them: it matches entries, with an hourly-pattern correlation of 0.997.
+- **XGBoost's gain over a plain weekly average is small.** With 48 days of data, a simple average is already strong. An earlier XGBoost version trained on log counts scored 68, worse than the baseline. Training on raw counts with absolute-error loss fixed that.
+- **Limits:** the data is one city over two months. It shows normal days only, with no festivals or events, and the 15 stations that opened in August 2025 have fewer days of history.
+
+Notebook: [04_metro_best_time.ipynb](notebooks/04_metro_best_time.ipynb)
 
 ## Progress
 
 - [x] Datasets downloaded and documented ([DATASETS.md](DATASETS.md))
 - [x] Counting model on ShanghaiTech Part A (v1, then improved v2)
 - [x] Counting model on ShanghaiTech Part B
-- [ ] Best time to visit: hourly patterns by type of place, baseline vs forecasting model
-- [x] Streamlit app: upload a photo → count + heatmap (runs locally; see below)
-- [ ] Best-time tab in the app
+- [x] Best time to travel: Namma Metro hourly crowds, baseline vs weekly pattern vs XGBoost
+- [x] Streamlit app with two pages: count a crowd photo; metro crowd check (photo → count → best time to travel). Runs locally; see below.
 - [ ] Live demo (Hugging Face Spaces / Streamlit Cloud)
 
 ## Data
@@ -93,7 +102,7 @@ Notebook: [03_counting_model_partB.ipynb](notebooks/03_counting_model_partB.ipyn
 |---|---|---|
 | Counting | ShanghaiTech Part A/B | Standard benchmark: dense (A) and sparse street (B) scenes |
 | Counting (optional) | JHU-Crowd++ / UCF-QNRF | Very dense crowds, varied weather and lighting |
-| Best time to visit | Melbourne Pedestrian Counting System | Years of real hourly sensor counts (CC BY 4.0) |
+| Best time to travel | BMRCL (Namma Metro) station-wise hourly ridership, Aug–Sep 2025 | Real hourly entries for 83 Bengaluru stations, obtained through RTI by Vivek Mathew, published on [OpenCity](https://data.opencity.in/dataset/bmrcl-station-wise-ridership-data) (CC BY-NC) |
 
 Full details (sizes, label formats, licenses, download links): [DATASETS.md](DATASETS.md). Datasets and trained weights are not stored in this repo.
 
