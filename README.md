@@ -129,7 +129,7 @@ DECISIONS.md, DATASETS.md            why each choice was made; data sources and 
 | People counting | ShanghaiTech Part A/B (1,198 images with head annotations) | BSD-2-Clause (dataset repo) |
 | Hourly metro crowds | BMRCL station-wise hourly ridership, Aug–Sep 2025 | Obtained through RTI by Vivek Mathew, published on [OpenCity](https://data.opencity.in/dataset/bmrcl-station-wise-ridership-data); Creative Commons Non-Commercial |
 
-Details, file checks and quirks: [DATASETS.md](DATASETS.md). Raw datasets and trained weights are not stored in this repo.
+Details, file checks and quirks: [DATASETS.md](DATASETS.md). Raw datasets are not stored in this repo. The trained counting weights (65 MB each) are published as the [weights-v1 release](https://github.com/Charan1845/crowdcast/releases/tag/weights-v1).
 
 ## Run it yourself
 
@@ -148,7 +148,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\streamlit run app/streamlit_app.py
 ```
 
-Counting a photo takes about 2 seconds on a laptop CPU. The trained weights (about 180 MB each) aren't in this repo yet, so the app needs the notebooks to have been run first. They'll be hosted with the live demo.
+On first start the app downloads the trained weights from the [weights-v1 release](https://github.com/Charan1845/crowdcast/releases/tag/weights-v1), so you can run it without training anything. Counting a photo takes about 2 seconds on a laptop CPU. `app/requirements.txt` lists only what the app needs (used by Streamlit Community Cloud).
 
 ## Progress
 
@@ -156,6 +156,7 @@ Counting a photo takes about 2 seconds on a laptop CPU. The trained weights (abo
 - [x] People counting on ShanghaiTech Part A (v1, then improved v2) and Part B
 - [x] Hourly metro crowd model: baseline vs weekly average vs XGBoost
 - [x] Streamlit app: count a crowd; metro crowd check (photo → count → best time to travel)
-- [ ] Live demo (Hugging Face Spaces), with the trained weights hosted there
+- [x] Trained weights published as a GitHub Release; the app downloads them on first start
+- [ ] Live demo on Streamlit Community Cloud
 - [ ] Test the metro page with real Namma Metro photos
 - [ ] More cities when hourly data becomes available (e.g. Hyderabad Metro via RTI)

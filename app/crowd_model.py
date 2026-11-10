@@ -20,6 +20,9 @@ from tensorflow.keras import Model, layers
 
 ROOT = Path(__file__).resolve().parent.parent
 WEIGHTS_DIR = ROOT / "weights"
+# Trained weights are too big for the git repo; they are published as GitHub Release assets and
+# downloaded on first use (e.g. on Streamlit Community Cloud). Inference-only copies, 65 MB each.
+WEIGHTS_URL = "https://github.com/Charan1845/crowdcast/releases/download/weights-v1/{}"
 
 DOWNSAMPLE = 8            # CSRNet output is 1/8 of the input size
 DENSITY_SCALE = 100.0     # targets were multiplied by this during training
@@ -53,10 +56,20 @@ def build_csrnet() -> Model:
     return Model(front.input, out, name="csrnet")
 
 
-def load_model(kind: str) -> Model:
+def ensure_weights(kind: str) -> Path:
+    """Local path to the model's weights, downloading them from the GitHub Release if missing."""
     path = WEIGHTS_DIR / MODELS[kind].weights_file
     if not path.exists():
-        raise FileNotFoundError(f"Trained weights not found: {path}. Train with the notebooks first.")
+        import urllib.request
+        WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".part")
+        urllib.request.urlretrieve(WEIGHTS_URL.format(MODELS[kind].weights_file), tmp)
+        tmp.replace(path)   # only a complete download gets the real name
+    return path
+
+
+def load_model(kind: str) -> Model:
+    path = ensure_weights(kind)
     model = build_csrnet()
     model.load_weights(str(path))
     return model

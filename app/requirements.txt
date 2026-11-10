@@ -1,0 +1,9 @@
+# Packages needed to run the Streamlit app only (Streamlit Community Cloud reads this file).
+# Training the models needs the full list in the repo-root requirements.txt.
+streamlit==1.67.0
+tensorflow-cpu==2.20.0
+numpy==2.5.4
+pillow==13.0.0
+matplotlib==3.11.2
+pandas==3.1.1
+altair==6.3.0
