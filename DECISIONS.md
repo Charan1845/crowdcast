@@ -40,6 +40,12 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 
 ---
 
+### 9. Remove the metro feature; focus on counting accuracy (2026-11-18)
+**Decision:** The "best time to travel" feature (Decision #8) is removed from the app and the repo: the metro page, its data table and notebook 04. Git history keeps the work. The project now focuses on making the people count itself more accurate.
+**Why:** Friends testing the live app found that counts on everyday photos were off. For example, 8 people in a group photo were counted as 12–18, and a team lined up for the national anthem was overcounted too. The counting model is the core of the project, so accuracy there matters more than a second feature built on top of it. Next steps: measure train vs validation vs test error and error on a real-world small-group test set; add a person detector for small groups (exact counts) next to CSRNet for dense crowds; and add a feedback loop so users can report the correct count.
+
+---
+
 ## Open decisions
 
-- **Deployment:** where to host the app (Hugging Face Spaces or Streamlit Community Cloud), and where to store the ~180 MB trained weights.
+- **Routing rule:** when the app should trust the person detector (small, clearly visible groups) and when to switch to CSRNet (dense crowds). To be tuned on validation photos, then checked on held-out test photos.
