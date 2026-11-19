@@ -34,8 +34,8 @@ A Streamlit app: upload any photo, from a small group to a packed stadium. It pi
 
 - **Why a detector for small groups:** CSRNet was trained on crowds filmed from above. On everyday photos of a few people it "sees" heads in textures (trees, windows, patterned objects) and overcounts. A detector trained on everyday photos counts small groups exactly.
 - **Why not the detector for crowds:** it misses most people when heads overlap. It found about 9 people in validation crowds averaging 561.
-- **Detector:** EfficientDet-D2 (TensorFlow, pretrained on COCO), keeping "person" detections with confidence ≥ 0.30.
-- **Thresholds** (0.30, 40, 250) were tuned on **validation photos only**: COCO groups and ShanghaiTech A and B validation splits. See [DECISIONS.md](DECISIONS.md) #10.
+- **Detector:** EfficientDet-Lite4 (TensorFlow Lite, pretrained on COCO), keeping "person" detections with confidence ≥ 0.25. It's as accurate as the full EfficientDet-D2 on our validation photos (1.47 vs 1.48 people off) but uses about 64 MB of memory instead of 1.35 GB, which is what lets it run on free hosting. It returns at most 25 people, so a full 25 falls back to CSRNet.
+- **Thresholds** (0.25, 40, 250) were tuned on **validation photos only**: COCO groups and ShanghaiTech A and B validation splits. See [DECISIONS.md](DECISIONS.md) #10 and #11.
 
 ### People counting: CSRNet with a VGG-16 front end
 

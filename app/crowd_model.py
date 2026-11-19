@@ -105,38 +105,63 @@ def predict_density(model: Model, image: Image.Image) -> np.ndarray:
 # everyday photos (COCO) counts small groups exactly. The thresholds below were tuned on
 # validation photos only (notebook 06): COCO groups, ShanghaiTech A and B.
 # ---------------------------------------------------------------------------------------------
-DETECTOR_URL = "https://tfhub.dev/tensorflow/efficientdet/d2/1?tf-hub-format=compressed"
-DETECTOR_DIR = WEIGHTS_DIR / "detector" / "efficientdet_d2"
-PERSON_CLASS = 1            # COCO label id for "person"
-DET_SCORE = 0.30            # keep detections at least this confident
+# EfficientDet-Lite4 (TensorFlow Lite): as accurate as the full EfficientDet-D2 on our validation photos
+# (MAE 1.47 vs 1.48) but ~64 MB of memory instead of ~1.35 GB, which is what fits on free hosting.
+DETECTOR_URL = "https://tfhub.dev/tensorflow/lite-model/efficientdet/lite4/detection/default/2?lite-format=tflite"
+DETECTOR_FILE = WEIGHTS_DIR / "detector" / "efficientdet_lite4.tflite"
+PERSON_CLASS = 0            # "person" in the TFLite model's label map
+DET_SCORE = 0.25            # keep detections at least this confident (lowest validation error)
+DET_MAX = 25                # the TFLite model returns at most 25 objects; a full 25 may mean more people
 SMALL_GROUP_MAX = 40        # if the Street CSRNet sees at most this many people, trust the detector's exact count
 DENSE_SWITCH = 250          # if the Dense CSRNet sees more than this, it's a dense crowd: use the Dense model
                             # (the Street model badly undercounts dense crowds, so it can't make this call)
 
 
 def ensure_detector() -> Path:
-    """Local copy of the EfficientDet-D2 SavedModel, downloaded from TensorFlow Hub if missing."""
-    if not (DETECTOR_DIR / "saved_model.pb").exists():
-        import tarfile, tempfile, urllib.request
-        DETECTOR_DIR.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as tmp:
-            archive = Path(tmp) / "detector.tar.gz"
-            urllib.request.urlretrieve(DETECTOR_URL, archive)
-            with tarfile.open(archive) as tar:
-                tar.extractall(DETECTOR_DIR, filter="data")
-    return DETECTOR_DIR
+    """Local copy of the EfficientDet-Lite4 TFLite model, downloaded from TensorFlow Hub if missing."""
+    if not DETECTOR_FILE.exists():
+        import urllib.request
+        DETECTOR_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = DETECTOR_FILE.with_suffix(".part")
+        urllib.request.urlretrieve(DETECTOR_URL, tmp)
+        if tmp.stat().st_size < 1_000_000:   # an error page, not the model
+            tmp.unlink()
+            raise RuntimeError("Could not download the person detector from TensorFlow Hub.")
+        tmp.replace(DETECTOR_FILE)
+    return DETECTOR_FILE
 
 
-def load_detector():
-    return tf.saved_model.load(str(ensure_detector()))
+class PersonDetector:
+    """EfficientDet-Lite4 via the TFLite interpreter. A lock keeps it safe when several visitors count at once."""
+
+    def __init__(self, path: Path):
+        import threading, warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")   # tf.lite.Interpreter prints a deprecation notice
+            self.interpreter = tf.lite.Interpreter(model_path=str(path), num_threads=4)
+        self.interpreter.allocate_tensors()
+        self.input = self.interpreter.get_input_details()[0]
+        self.size = int(self.input["shape"][1])
+        self.outputs = self.interpreter.get_output_details()   # boxes, classes, scores, count
+        self.lock = threading.Lock()
+
+    def __call__(self, image: Image.Image) -> np.ndarray:
+        """Person boxes as (top, left, bottom, right) in pixels, confidence >= DET_SCORE."""
+        x = np.asarray(image.convert("RGB").resize((self.size, self.size)), dtype=np.uint8)[None]
+        with self.lock:
+            self.interpreter.set_tensor(self.input["index"], x)
+            self.interpreter.invoke()
+            boxes, classes, scores = (self.interpreter.get_tensor(o["index"])[0] for o in self.outputs[:3])
+        keep = (classes == PERSON_CLASS) & (scores >= DET_SCORE)
+        return boxes[keep] * np.array([image.height, image.width, image.height, image.width])   # boxes are 0..1
 
 
-def detect_people(detector, image: Image.Image) -> np.ndarray:
-    """Person boxes as (top, left, bottom, right) in pixels, confidence >= DET_SCORE."""
-    out = detector(tf.convert_to_tensor(np.asarray(image, dtype=np.uint8)[None], tf.uint8))
-    keep = (out["detection_classes"][0].numpy() == PERSON_CLASS) & (out["detection_scores"][0].numpy() >= DET_SCORE)
-    boxes = out["detection_boxes"][0].numpy()[keep]        # normalised 0..1
-    return boxes * np.array([image.height, image.width, image.height, image.width])
+def load_detector() -> PersonDetector:
+    return PersonDetector(ensure_detector())
+
+
+def detect_people(detector: PersonDetector, image: Image.Image) -> np.ndarray:
+    return detector(image)
 
 
 def draw_boxes(image: Image.Image, boxes: np.ndarray) -> Image.Image:
@@ -168,7 +193,9 @@ def count_auto(image: Image.Image, models: dict, detector) -> CountResult:
     street = float(max(street_map.sum(), 0))
     if street <= SMALL_GROUP_MAX:
         boxes = detect_people(detector, image)
-        return CountResult(float(len(boxes)), "detector", draw_boxes(image, boxes), street)
+        if len(boxes) < DET_MAX:   # a full 25 may mean the detector ran out of slots: fall back to CSRNet
+            return CountResult(float(len(boxes)), "detector", draw_boxes(image, boxes), street)
+        return CountResult(street, "street", heatmap_overlay(image, street_map), street)
     dense_map = predict_density(models["dense"], image)
     dense = float(max(dense_map.sum(), 0))
     if dense > DENSE_SWITCH:

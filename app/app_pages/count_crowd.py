@@ -91,7 +91,7 @@ st.divider()
 with st.expander(":material/info: About the models"):
     st.markdown(
         f"""
-**Small groups: EfficientDet-D2 person detector** (TensorFlow, pretrained on the COCO dataset of everyday photos).
+**Small groups: EfficientDet-Lite4 person detector** (TensorFlow Lite, pretrained on the COCO dataset of everyday photos).
 It finds each person and draws a box, so the count is exact when people are clearly visible.
 
 **Crowds: CSRNet** (density estimation) with a **VGG-16** front end pretrained on ImageNet, fine-tuned on ShanghaiTech.

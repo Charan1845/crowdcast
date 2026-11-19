@@ -56,6 +56,10 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 - Choosing Dense on the Street estimate failed on very dense crowds, because Street undercounts them (997 counted as 153). Using the Dense model's own estimate (> 250) brought A validation error to 107, the same as the Dense model alone.
 **Still to do:** report all of this once on the held-out test photos (150 COCO, ShanghaiTech A and B test).
 
+### 11. Smaller detector (EfficientDet-Lite4) to stay on free hosting (2026-11-19)
+**Decision:** Replace the full EfficientDet-D2 with **EfficientDet-Lite4** (TensorFlow Lite, confidence ≥ 0.25), and keep hosting on free Streamlit Community Cloud.
+**Why:** The live app crashed with "503" on crowd photos. Measured locally, loading D2 alone took about 1.35 GB, and the app peaked at about 3.5 GB, far above the free tier's limit. Moving to Hugging Face Spaces was considered, but running apps (Docker or Gradio) there now needs a paid PRO plan, so the user chose to slim the app down instead. On the 75 COCO validation photos, Lite4 matches D2 (MAE 1.47 vs 1.48) while using about 64 MB and running about 7× faster (0.3 s vs 2.2 s per photo). With all three models loaded, the app now sits at about 630 MB (was 1.9 GB) and peaks at about 2.0 GB while counting (was 3.5 GB). Lite4 returns at most 25 objects, so a full 25 falls back to CSRNet rather than reporting a capped count. Routing on validation photos is essentially unchanged: COCO groups 3.3 people off (3.4 with D2), ShanghaiTech B 15.7 (15.0), A 107 (107).
+
 ---
 
 ## Open decisions
