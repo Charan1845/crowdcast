@@ -12,12 +12,17 @@ def get_model(kind: str):
     return cm.load_model(kind)
 
 
+@st.cache_resource(show_spinner=False)
+def get_detector():
+    return cm.load_detector()
+
+
 @st.cache_data(show_spinner=False, max_entries=20)
-def count_people(image_bytes: bytes, kind: str):
-    """Returns (image, heatmap overlay, people count, was_resized)."""
+def count_photo(image_bytes: bytes):
+    """Returns (image, CountResult, was_resized). Picks detector or CSRNet automatically."""
     image, resized = cm.prepare_image(Image.open(io.BytesIO(image_bytes)))
-    dmap = cm.predict_density(get_model(kind), image)
-    return image, cm.heatmap_overlay(image, dmap), float(max(dmap.sum(), 0)), resized
+    result = cm.count_auto(image, {"street": get_model("street"), "dense": get_model("dense")}, get_detector())
+    return image, result, resized
 
 
 def png_bytes(image: Image.Image) -> bytes:

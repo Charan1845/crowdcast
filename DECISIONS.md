@@ -46,6 +46,18 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 
 ---
 
+### 10. Hybrid counting: a person detector for small groups, CSRNet for crowds (2026-11-19)
+**Decision:** The app no longer asks the user for a crowd type. The Street CSRNet makes a first estimate. If it is **40 or fewer**, an **EfficientDet-D2 person detector** (TensorFlow, pretrained on COCO, confidence ≥ 0.30) counts each person and draws boxes. Otherwise the **Dense CSRNet** runs, and its estimate is used if it is **above 250**. If not, the Street CSRNet's estimate is used.
+**Why:** The diagnosis (notebook 05) showed the CSRNet models are healthy on ShanghaiTech-style photos (Street: train 12.6 / validation 12.8 / test 13.4), but they overcount everyday photos of small groups. On 225 COCO photos with 1–20 people, the error was 7.2 people with +6.0 bias. That's domain shift, not overfitting: heatmaps showed heads "seen" in trees, windows and patterned objects. Training longer on ShanghaiTech can't fix that. A detector trained on everyday photos counts small groups exactly, but it misses people in dense crowds, so each method is used where it works.
+**How the thresholds were chosen (validation photos only):**
+- Detector confidence: 0.30 gave the lowest error on 75 COCO validation photos (MAE 1.48 vs 1.84 for EfficientDet-D0). D2 was chosen over D0 despite being slower (about 2.2 s vs 0.8 s per photo).
+- Routing on detector count failed: the detector finds few people in dense crowds too.
+- The Street CSRNet estimate separates the cases well. At ≤ 40, COCO validation error fell from 8.5 to 3.4 people, at a cost of about 5% on ShanghaiTech B.
+- Choosing Dense on the Street estimate failed on very dense crowds, because Street undercounts them (997 counted as 153). Using the Dense model's own estimate (> 250) brought A validation error to 107, the same as the Dense model alone.
+**Still to do:** report all of this once on the held-out test photos (150 COCO, ShanghaiTech A and B test).
+
+---
+
 ## Open decisions
 
-- **Routing rule:** when the app should trust the person detector (small, clearly visible groups) and when to switch to CSRNet (dense crowds). To be tuned on validation photos, then checked on held-out test photos.
+- **Large groups:** how to count 40–150 people in everyday photos, which sit between what the detector and CSRNet each handle well.

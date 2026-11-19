@@ -13,11 +13,29 @@
 
 ## What it does
 
-A Streamlit app: upload any crowd photo and get the number of people plus a heatmap of where they are. Choose *Street scene* or *Dense crowd* to pick the matching model.
+A Streamlit app: upload any photo, from a small group to a packed stadium. It picks the counting method by itself:
 
-> 🚧 **In progress:** improving accuracy on small groups photographed at eye level (e.g. a team lined up, a group photo), where the crowd model overcounts. See [Progress](#progress).
+- **Small groups:** a person detector finds each person, draws a numbered box around them, and gives an **exact count**.
+- **Crowds:** CSRNet estimates the count from a **density map** and shows a heatmap of where the crowd is.
+
+> 🚧 **In progress:** a final check of the hybrid on held-out test photos, better handling of large groups, and a feedback loop. See [Progress](#progress).
 
 ## How it works
+
+### Choosing the method automatically
+
+```
+ Photo ──► CSRNet (Street) estimate ──► ≤ 40 people? ──yes──► person detector: exact count, box per person
+                                              │
+                                              no ──► CSRNet (Dense) estimate > 250? ──yes──► Dense crowd density map
+                                                                   │
+                                                                   no ──► Street scene density map
+```
+
+- **Why a detector for small groups:** CSRNet was trained on crowds filmed from above. On everyday photos of a few people it "sees" heads in textures (trees, windows, patterned objects) and overcounts. A detector trained on everyday photos counts small groups exactly.
+- **Why not the detector for crowds:** it misses most people when heads overlap. It found about 9 people in validation crowds averaging 561.
+- **Detector:** EfficientDet-D2 (TensorFlow, pretrained on COCO), keeping "person" detections with confidence ≥ 0.30.
+- **Thresholds** (0.30, 40, 250) were tuned on **validation photos only**: COCO groups and ShanghaiTech A and B validation splits. See [DECISIONS.md](DECISIONS.md) #10.
 
 ### People counting: CSRNet with a VGG-16 front end
 
@@ -70,7 +88,8 @@ Why each choice was made (CSRNet over YOLO, transfer learning, Streamlit): [DECI
 ## Limitations
 
 - **Counting models** were trained on ShanghaiTech photos. Photos with very different angles, lighting or places may count less accurately. Both models still overcount sparse scenes a little.
-- **Small groups at eye level** (e.g. 8 people in a group photo) are overcounted, often by half again or more. ShanghaiTech has almost no photos like these. This is being worked on.
+- **Small groups at eye level** used to be badly overcounted by CSRNet: on 225 everyday COCO photos with 1–20 people it was off by 7.2 people on average, and overcounted by 6.0 ([diagnosis](notebooks/05_accuracy_diagnosis.ipynb)). The hybrid fixes most of this (validation error 8.5 → 3.4 people). The final held-out test is still to come.
+- **The detector counts people it can see.** Heavily hidden people, or groups larger than about 40, go to CSRNet instead.
 
 ## Project layout
 
@@ -79,10 +98,11 @@ notebooks/
   01_counting_model_partA.ipynb      CSRNet v1 on ShanghaiTech A
   02_counting_model_partA_v2.ipynb   improved v2 + v1 vs v2 comparison
   03_counting_model_partB.ipynb      CSRNet on ShanghaiTech B
+  05_accuracy_diagnosis.ipynb        train/val/test check + everyday small-group photos (COCO)
 app/
   streamlit_app.py                   entry point
   app_pages/count_crowd.py           the counting page
-  crowd_model.py, shared.py          model loading, counting, heatmap
+  crowd_model.py, shared.py          CSRNet + person detector, automatic method choice, heatmap/boxes
 .streamlit/config.toml               app theme
 DECISIONS.md, DATASETS.md            why each choice was made; data sources and licenses
 ```
@@ -122,6 +142,6 @@ On first start the app downloads the trained weights from the [weights-v1 releas
 - [x] Trained weights published as a GitHub Release; the app downloads them on first start
 - [x] Live demo on Streamlit Community Cloud: [crowdcast-charan.streamlit.app](https://crowdcast-charan.streamlit.app)
 - [x] Removed the metro "best time to travel" feature to focus on counting accuracy (see [DECISIONS.md](DECISIONS.md) #9)
-- [ ] Measure train vs validation vs test error, and error on a real-world small-group test set
-- [ ] Hybrid counting: a person detector for small groups (exact counts with boxes), CSRNet for dense crowds, chosen automatically
+- [x] Measured train vs validation vs test error, and error on a real-world small-group test set ([notebook 05](notebooks/05_accuracy_diagnosis.ipynb))
+- [x] Hybrid counting: a person detector for small groups (exact counts with boxes), CSRNet for dense crowds, chosen automatically
 - [ ] Feedback loop: users can report the correct count to help improve the model

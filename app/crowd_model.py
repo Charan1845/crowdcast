@@ -98,6 +98,84 @@ def predict_density(model: Model, image: Image.Image) -> np.ndarray:
     return dmap[: int(np.ceil(h / DOWNSAMPLE)), : int(np.ceil(w / DOWNSAMPLE))]
 
 
+# ---------------------------------------------------------------------------------------------
+# Hybrid counting: a person detector for small groups, CSRNet for crowds.
+# CSRNet was trained on crowds filmed from above, so on everyday photos of a few people (group
+# shots, a team lined up) it "sees" heads in textures and overcounts. A detector trained on
+# everyday photos (COCO) counts small groups exactly. The thresholds below were tuned on
+# validation photos only (notebook 06): COCO groups, ShanghaiTech A and B.
+# ---------------------------------------------------------------------------------------------
+DETECTOR_URL = "https://tfhub.dev/tensorflow/efficientdet/d2/1?tf-hub-format=compressed"
+DETECTOR_DIR = WEIGHTS_DIR / "detector" / "efficientdet_d2"
+PERSON_CLASS = 1            # COCO label id for "person"
+DET_SCORE = 0.30            # keep detections at least this confident
+SMALL_GROUP_MAX = 40        # if the Street CSRNet sees at most this many people, trust the detector's exact count
+DENSE_SWITCH = 250          # if the Dense CSRNet sees more than this, it's a dense crowd: use the Dense model
+                            # (the Street model badly undercounts dense crowds, so it can't make this call)
+
+
+def ensure_detector() -> Path:
+    """Local copy of the EfficientDet-D2 SavedModel, downloaded from TensorFlow Hub if missing."""
+    if not (DETECTOR_DIR / "saved_model.pb").exists():
+        import tarfile, tempfile, urllib.request
+        DETECTOR_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "detector.tar.gz"
+            urllib.request.urlretrieve(DETECTOR_URL, archive)
+            with tarfile.open(archive) as tar:
+                tar.extractall(DETECTOR_DIR, filter="data")
+    return DETECTOR_DIR
+
+
+def load_detector():
+    return tf.saved_model.load(str(ensure_detector()))
+
+
+def detect_people(detector, image: Image.Image) -> np.ndarray:
+    """Person boxes as (top, left, bottom, right) in pixels, confidence >= DET_SCORE."""
+    out = detector(tf.convert_to_tensor(np.asarray(image, dtype=np.uint8)[None], tf.uint8))
+    keep = (out["detection_classes"][0].numpy() == PERSON_CLASS) & (out["detection_scores"][0].numpy() >= DET_SCORE)
+    boxes = out["detection_boxes"][0].numpy()[keep]        # normalised 0..1
+    return boxes * np.array([image.height, image.width, image.height, image.width])
+
+
+def draw_boxes(image: Image.Image, boxes: np.ndarray) -> Image.Image:
+    """The photo with a numbered box around each detected person."""
+    from PIL import ImageDraw
+    out = image.copy()
+    draw = ImageDraw.Draw(out)
+    width = max(2, round(min(image.size) / 250))
+    for i, (top, left, bottom, right) in enumerate(sorted(boxes, key=lambda b: b[1]), start=1):
+        draw.rectangle([left, top, right, bottom], outline="#38BDAE", width=width)
+        label = str(i)
+        tw, th = draw.textbbox((0, 0), label)[2:]
+        draw.rectangle([left, top, left + tw + 6, top + th + 4], fill="#38BDAE")
+        draw.text((left + 3, top + 1), label, fill="#0D1117")
+    return out
+
+
+@dataclass
+class CountResult:
+    count: float
+    method: str              # "detector", "street" or "dense"
+    overlay: Image.Image     # boxes (detector) or heatmap (density)
+    street_estimate: float   # CSRNet Street model's count, used for routing
+
+
+def count_auto(image: Image.Image, models: dict, detector) -> CountResult:
+    """Pick the right method for the photo and count. `models` holds the "street" and "dense" CSRNets."""
+    street_map = predict_density(models["street"], image)
+    street = float(max(street_map.sum(), 0))
+    if street <= SMALL_GROUP_MAX:
+        boxes = detect_people(detector, image)
+        return CountResult(float(len(boxes)), "detector", draw_boxes(image, boxes), street)
+    dense_map = predict_density(models["dense"], image)
+    dense = float(max(dense_map.sum(), 0))
+    if dense > DENSE_SWITCH:
+        return CountResult(dense, "dense", heatmap_overlay(image, dense_map), street)
+    return CountResult(street, "street", heatmap_overlay(image, street_map), street)
+
+
 def heatmap_overlay(image: Image.Image, dmap: np.ndarray, alpha: float = 0.55) -> Image.Image:
     """Blend a coloured density map over the photo (transparent where nobody was found)."""
     d = np.maximum(dmap, 0)

@@ -1,22 +1,28 @@
-"""Page: upload a crowd photo, get a people count and a density heatmap."""
+"""Page: upload a crowd photo, get a people count with boxes (small groups) or a heatmap (crowds)."""
 import streamlit as st
 from PIL import UnidentifiedImageError
 
 import crowd_model as cm
-from shared import count_people, png_bytes
+from shared import count_photo, png_bytes
 
 REPO_URL = "https://github.com/Charan1845/crowdcast"
-
+METHOD_TEXT = {
+    "detector": ("Each person found", ":material/person_search:",
+                 "A small group: a person detector (EfficientDet, trained on everyday photos) found and boxed each person."),
+    "street": ("Crowd density", ":material/blur_on:",
+               "A crowd: CSRNet estimated the count from a density map of where people are (Street scene model)."),
+    "dense": ("Dense crowd density", ":material/blur_on:",
+              "A dense crowd: CSRNet estimated the count from a density map (Dense crowd model)."),
+}
 
 # ---------- Header ----------
 st.title("Count the crowd in any photo")
-st.markdown("Upload a crowd photo and a deep-learning model estimates **how many people** are in it, "
-            "with a heatmap of **where** it found them.")
+st.markdown("Upload a photo, from a small group to a packed stadium. Crowdcast picks the right method by itself: "
+            "it **boxes each person** in small groups, and estimates **crowd density** for big crowds.")
 with st.container(horizontal=True, gap="small"):
     st.badge("VGG-16 CSRNet", icon=":material/neurology:", color="primary")
-    st.badge("Transfer learning", icon=":material/model_training:", color="gray")
+    st.badge("EfficientDet person detector", icon=":material/person_search:", color="gray")
     st.badge("TensorFlow", icon=":material/memory:", color="gray")
-    st.badge("Trained on ShanghaiTech", icon=":material/dataset:", color="gray")
 
 st.space("small")
 controls, results = st.columns([1, 2], gap="large")
@@ -24,92 +30,79 @@ controls, results = st.columns([1, 2], gap="large")
 # ---------- Controls ----------
 with controls:
     with st.container(border=True):
-        st.subheader(":material/tune: Settings")
-        kind = st.segmented_control(
-            "Crowd type",
-            options=list(cm.MODELS),
-            format_func=lambda k: cm.MODELS[k].label,
-            default="street",
-            required=True,
-            key="kind",
-            width="stretch",
-            help="Street scene: you can pick out individual people (tens to a few hundred). "
-                 "Dense crowd: mostly a sea of heads (hundreds to thousands).",
-        )
+        st.subheader(":material/photo_camera: Your photo")
         uploaded = st.file_uploader("Crowd photo", type=["jpg", "jpeg", "png"], key="photo")
         st.caption(":material/lock: Photos are only used to count people and are not stored.")
 
-    with st.expander(":material/help: Which crowd type should I pick?"):
+    with st.expander(":material/help: How does it choose?"):
         st.markdown(
-            "- **Street scene**: pavements, squares, shopping streets. You can see individual people.\n"
-            "- **Dense crowd**: rallies, stadiums, festivals. Mostly tiny heads packed together.\n\n"
-            "Not sure? Try both. The app suggests switching if the count looks off for the model."
+            f"1. A crowd model (CSRNet) makes a first estimate.\n"
+            f"2. **{cm.SMALL_GROUP_MAX} people or fewer:** a person detector counts each person exactly and draws a box "
+            f"around them. The crowd model overcounts small groups photographed at eye level.\n"
+            f"3. **More than that:** the crowd model's density estimate is used, since detectors miss people "
+            f"when heads overlap. If the dense-crowd model sees more than {cm.DENSE_SWITCH} people, its estimate is used."
         )
 
 # ---------- Results ----------
 with results:
     if uploaded is None:
         with st.container(border=True, height="stretch"):
-            st.subheader(":material/photo_camera: How it works")
+            st.subheader(":material/route: How it works")
             step1, step2, step3 = st.columns(3)
-            step1.markdown("**1. Pick a crowd type**\n\nStreet scene or dense crowd. Each uses a model trained on that kind of photo.")
-            step2.markdown("**2. Upload a photo**\n\nAny JPG or PNG. Large photos are scaled to 1024 px, the size the models were trained on.")
-            step3.markdown("**3. Get the count**\n\nThe model draws a density map of where people are, and its total is the count.")
-            st.caption("Counting takes about 2 seconds on a laptop CPU.")
+            step1.markdown("**1. Upload a photo**\n\nAny JPG or PNG: a group photo, a street, a stadium.")
+            step2.markdown("**2. It picks a method**\n\nSmall groups: find each person. Crowds: estimate density.")
+            step3.markdown("**3. Get the count**\n\nWith a box around each person, or a heatmap of where the crowd is.")
+            st.caption("Counting takes a few seconds on a laptop CPU.")
         st.stop()
 
-    info = cm.MODELS[kind]
     try:
         with st.spinner("Counting people..."):
-            image, overlay, count, resized = count_people(uploaded.getvalue(), kind)
+            image, result, resized = count_photo(uploaded.getvalue())
     except UnidentifiedImageError:
         st.error("That file couldn't be read as an image. Try a JPG or PNG.", icon=":material/broken_image:")
         st.stop()
 
-    low, high = max(0, count - info.test_mae), count + info.test_mae
-    m1, m2, m3 = st.columns(3)
-    m1.metric("People counted", f"{count:,.0f}", icon=":material/groups:", border=True,
-              help="Sum of the predicted density map.")
-    m2.metric("Likely range", f"{low:,.0f} – {high:,.0f}", icon=":material/straighten:", border=True,
-              help=f"± the model's average error on its {info.dataset} test photos ({info.test_mae:g} people).")
-    m3.metric("Model", info.label.split()[0], icon=":material/neurology:", border=True,
-              help=f"{info.label} model, trained on {info.dataset}. Test photos averaged {info.test_mean_count} people.")
+    label, icon, explanation = METHOD_TEXT[result.method]
+    exact = result.method == "detector"
+    count_text = f"{result.count:,.0f}" if exact else f"≈ {result.count:,.0f}"
 
-    if kind == "street" and count > 500:
-        st.warning("This looks like a dense crowd. The **Dense crowd** model may count it better.",
-                   icon=":material/lightbulb:")
-    elif kind == "dense" and count < 100:
-        st.warning("This looks like a fairly sparse scene. The **Street scene** model may count it better.",
-                   icon=":material/lightbulb:")
+    m1, m2 = st.columns(2)
+    m1.metric("People in this photo", count_text, icon=":material/groups:", border=True,
+              help="Number of people the detector found." if exact else "Sum of the predicted density map.")
+    m2.metric("Method", label, icon=icon, border=True, help=explanation)
+    st.caption(explanation)
 
-    col_photo, col_heat = st.columns(2)
-    col_photo.image(image, caption="Your photo", alt="The uploaded crowd photo", width="stretch")
-    col_heat.image(overlay, caption="Where the model found people",
-                   alt=f"The photo with a heatmap over the areas where the model counted about {count:,.0f} people",
-                   width="stretch")
+    col_photo, col_result = st.columns(2)
+    col_photo.image(image, caption="Your photo", alt="The uploaded photo", width="stretch")
+    col_result.image(result.overlay,
+                     caption=f"{result.count:,.0f} people found" if exact else "Where the model found people",
+                     alt=(f"The photo with a numbered box around each of the {result.count:,.0f} people found" if exact else
+                          f"The photo with a heatmap over the areas where the model estimated about {result.count:,.0f} people"),
+                     width="stretch")
 
     with st.container(horizontal=True, vertical_alignment="center"):
-        st.download_button("Download heatmap", png_bytes(overlay), file_name="crowdcast_heatmap.png",
+        st.download_button("Download result image", png_bytes(result.overlay), file_name="crowdcast_result.png",
                            mime="image/png", icon=":material/download:", on_click="ignore")
         if resized:
             st.caption("Scaled down to 1024 px on its longest side, the size the models were trained on.")
 
 # ---------- Footer ----------
 st.divider()
-with st.expander(":material/info: About the model"):
+with st.expander(":material/info: About the models"):
     st.markdown(
         f"""
-**CSRNet** (density estimation) with a **VGG-16** front end pretrained on ImageNet, fine-tuned on
-ShanghaiTech. Instead of drawing a box around each person, which fails when heads overlap, it predicts
-a density map, and the count is its sum.
+**Small groups: EfficientDet-D2 person detector** (TensorFlow, pretrained on the COCO dataset of everyday photos).
+It finds each person and draws a box, so the count is exact when people are clearly visible.
 
-| Model | Trained on | Test MAE | Published CSRNet |
+**Crowds: CSRNet** (density estimation) with a **VGG-16** front end pretrained on ImageNet, fine-tuned on ShanghaiTech.
+Instead of drawing a box around each person, which fails when heads overlap, it predicts a density map, and the count is its sum.
+
+| Crowd model | Trained on | Test MAE | Published CSRNet |
 |---|---|---|---|
-| Street scene | ShanghaiTech Part B (sparse streets) | 13.4 | 10.6 |
+| Street scene | ShanghaiTech Part B (street crowds) | 13.4 | 10.6 |
 | Dense crowd | ShanghaiTech Part A (dense crowds) | 79.6 | 68.2 |
 
 MAE is the average number of people the count is off by on test photos the model never saw.
-Photos unlike ShanghaiTech (unusual angles, lighting or places) may count less accurately.
 Code, notebooks and full results: [{REPO_URL.removeprefix('https://')}]({REPO_URL}).
 """
     )
