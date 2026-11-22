@@ -134,6 +134,14 @@ py -3.12 -m venv .venv
 
 On first start the app downloads the trained weights from the [weights-v1 release](https://github.com/Charan1845/crowdcast/releases/tag/weights-v1), so you can run it without training anything. Counting a photo takes about 2 seconds on a laptop CPU. `app/requirements.txt` lists only what the app needs (used by Streamlit Community Cloud).
 
+## Tests
+
+```bash
+.venv\Scripts\python -m unittest discover -s tests -v
+```
+
+Checks the automatic method choice (detector for small groups, Street or Dense CSRNet for crowds, including the thresholds and the full-detector fallback) and photo resizing, using fake models so no weights are needed.
+
 ## Progress
 
 - [x] Datasets downloaded and documented
