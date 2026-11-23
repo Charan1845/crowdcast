@@ -25,6 +25,16 @@ def count_photo(image_bytes: bytes):
     return image, result, resized
 
 
+def feedback_configured() -> bool:
+    """True when the Hugging Face secrets for saving corrections are set."""
+    try:
+        return bool(st.secrets.get("HF_TOKEN")) and bool(st.secrets.get("HF_FEEDBACK_REPO"))
+    except FileNotFoundError:   # no secrets file at all (e.g. a fresh local checkout)
+        return False
+    except st.errors.StreamlitSecretNotFoundError:
+        return False
+
+
 def png_bytes(image: Image.Image) -> bytes:
     buf = io.BytesIO()
     image.save(buf, format="PNG")

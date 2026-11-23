@@ -29,10 +29,17 @@ def fake_csrnet(count: float):
     return run
 
 
-def fake_detector(n_boxes: int):
-    """A stand-in for PersonDetector: returns n person boxes (top, left, bottom, right) in pixels."""
+def fake_detector(n_boxes: int, tile_boxes: int = 0, full_size=(320, 240)):
+    """A stand-in for PersonDetector: n boxes (top, left, bottom, right, score) on the whole photo, and optionally
+    extra small people in the top-left tile only."""
     def detect(image):
-        return np.array([[10, 10 + 8 * i, 50, 16 + 8 * i] for i in range(n_boxes)], dtype=np.float32).reshape(-1, 4)
+        if image.size == full_size:
+            rows = [[10, 10 + 8 * i, 50, 16 + 8 * i, 0.9] for i in range(n_boxes)]
+        elif image.getpixel((0, 0)) == (1, 2, 3):
+            rows = [[100, 4 + 6 * i, 110, 8 + 6 * i, 0.8] for i in range(tile_boxes)]
+        else:
+            rows = []
+        return np.array(rows, dtype=np.float32).reshape(-1, 5)
     return detect
 
 
@@ -75,6 +82,39 @@ class CountAutoRoutingTest(unittest.TestCase):
         self.assertEqual(r.street_estimate, 0.0)
         self.assertEqual(r.method, "detector")
         self.assertEqual(r.count, 0.0)
+
+    def test_tiles_rescue_a_full_detector(self):
+        self.image.putpixel((0, 0), (1, 2, 3))   # marks the top-left tile for the fake detector
+        models = {"street": fake_csrnet(30), "dense": fake_csrnet(60)}
+        r = cm.count_auto(self.image, models, fake_detector(cm.DET_MAX, tile_boxes=5))
+        self.assertEqual(r.method, "detector")
+        self.assertEqual(r.count, cm.DET_MAX + 5)
+
+    def test_group_overcounted_by_csrnet_uses_detector(self):
+        r = self.count(street=90, dense=120, boxes=cm.GROUP_MIN)   # the boxes cover a small share of the photo
+        self.assertEqual(r.method, "detector")
+        self.assertEqual(r.count, cm.GROUP_MIN)
+
+    def test_dense_crowd_beats_the_group_check(self):
+        r = self.count(street=90, dense=600, boxes=cm.GROUP_MIN)   # a few faces found in a packed crowd
+        self.assertEqual(r.method, "dense")
+        self.assertAlmostEqual(r.count, 600, places=1)
+
+    def test_boxes_filling_the_photo_stay_a_crowd(self):
+        models = {"street": fake_csrnet(90), "dense": fake_csrnet(120)}
+        def big(image):
+            return np.array([[0, x, image.height, x + 30, 0.9] for x in range(0, image.width - 30, 32)], dtype=np.float32)
+        self.assertEqual(cm.count_auto(self.image, models, big).method, "street")
+
+    def test_merge_drops_duplicates_and_cut_people(self):
+        boxes = np.array([[0, 0, 100, 50, 0.9], [2, 1, 100, 50, 0.8], [0, 0, 60, 50, 0.7], [0, 80, 100, 130, 0.6]],
+                         dtype=np.float32)
+        self.assertEqual(len(cm.merge_boxes(boxes, cm.TILE_IOU, cm.TILE_IOM)), 2)
+
+    def test_tiles_cover_the_whole_photo(self):
+        tiles = cm.tile_grid(1024, 768)
+        self.assertEqual((min(t[0] for t in tiles), min(t[1] for t in tiles)), (0, 0))
+        self.assertEqual((max(t[2] for t in tiles), max(t[3] for t in tiles)), (1024, 768))
 
     def test_overlay_matches_image_size(self):
         for street, dense, boxes in [(12, 30, 4), (100, 600, 0)]:

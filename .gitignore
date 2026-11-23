@@ -28,6 +28,7 @@ checkpoints/
 
 # Secrets
 .env
+.streamlit/secrets.toml
 
 # Editors / OS
 .vscode/

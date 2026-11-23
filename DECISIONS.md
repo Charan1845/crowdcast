@@ -67,8 +67,18 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 **Why:** The reported failures were on everyday photos, and those improved by 46%. The crowd numbers got worse because the app now has to infer the crowd type. These test photos can't be used to re-tune the thresholds, so any later routing change needs fresh validation and a new test set.
 **Correction:** earlier notes described the COCO subset as 1–20 people. The photos that passed its filters actually contain at most 13, so the "11-20" bin is really 11–13.
 
+### 13. Larger groups: tiled detection and a group check, tested on Open Images (2026-11-23)
+**Decision:** When the detector finds 5 or more people, it also checks four overlapping tiles and merges duplicates. If CSRNet says "crowd" (Street > 40) and the Dense model does not see a dense crowd (≤ 250), but the detector found at least 8 people covering under 15% of the photo, the detector's count is used.
+**Data:** CrowdHuman was the first choice, but its official Google Drive files no longer exist. COCO has no photo with more than 13 labelled people. Open Images validation has 52 usable photos with 14–38 separately labelled people, split 26 tuning / 26 test.
+**Result:** groups of 14–38 improved from MAE 25.4 to 18.2 (median error 5.5 → 3.5). COCO 3.53 → 3.43, ShanghaiTech B 17.0 → 16.3, A 87.0 → 86.9.
+**What went wrong first:** the first version ran the group check before the Dense check and made ShanghaiTech A much worse (123.3), because a packed crowd can show only a few detected faces. The Dense check now runs first. That change was made after seeing the test, so the final numbers are not a clean held-out score. An independent check on 255 ShanghaiTech A training photos agrees: 67.0 before, 107.4 first version, 66.8 fixed.
+
+### 14. Feedback form, stored in a private Hugging Face dataset (2026-11-23)
+**Decision:** Visitors can report the correct count. Each correction is saved with the model's answer and method, and no visitor details. A photo is saved only if the visitor ticks a box, re-encoded so EXIF data (location, device) is removed. The code refuses to write to a dataset that isn't private, and the form stays hidden until the `HF_TOKEN` and `HF_FEEDBACK_REPO` secrets are set.
+**Why:** Friends' real photos exposed the biggest weakness in the app, so real corrections are the most useful data for future improvements.
+
 ---
 
 ## Open decisions
 
-- **Large groups:** how to count 40–150 people in everyday photos, which sit between what the detector and CSRNet each handle well.
+- **Groups of about 40–150 people at eye level:** still unmeasured. It needs a labelled test set first.

@@ -120,6 +120,14 @@ DET_MAX = 25                # the TFLite model returns at most 25 objects; a ful
 SMALL_GROUP_MAX = 40        # if the Street CSRNet sees at most this many people, trust the detector's exact count
 DENSE_SWITCH = 250          # if the Dense CSRNet sees more than this, it's a dense crowd: use the Dense model
                             # (the Street model badly undercounts dense crowds, so it can't make this call)
+# Larger groups (notebook 07, tuned on validation photos only). The detector sees a 640 px copy of the photo and
+# returns 25 objects at most, so once it finds several people it looks again at four overlapping tiles.
+TILE_TRIGGER = 5            # run the tiles when the whole photo shows at least this many people
+TILE_OVERLAP = 0.25         # how much neighbouring tiles overlap, so nobody is lost on a tile edge
+FULL_IOU, FULL_IOM = 0.5, 0.85   # duplicate-box limits for the whole-photo pass
+TILE_IOU, TILE_IOM = 0.4, 0.7    # stricter limits once tiles are merged in (one person can appear in two tiles)
+GROUP_MIN = 8               # CSRNet says "crowd", but the detector found at least this many people...
+GROUP_COVER = 0.15          # ...and their boxes cover under this share of the photo: it's a group, trust the detector
 
 
 def ensure_detector() -> Path:
@@ -151,22 +159,67 @@ class PersonDetector:
         self.lock = threading.Lock()
 
     def __call__(self, image: Image.Image) -> np.ndarray:
-        """Person boxes as (top, left, bottom, right) in pixels, confidence >= DET_SCORE."""
+        """Person boxes as (top, left, bottom, right, score) in pixels, confidence >= DET_SCORE."""
         x = np.asarray(image.convert("RGB").resize((self.size, self.size)), dtype=np.uint8)[None]
         with self.lock:
             self.interpreter.set_tensor(self.input["index"], x)
             self.interpreter.invoke()
             boxes, classes, scores = (self.interpreter.get_tensor(o["index"])[0] for o in self.outputs[:3])
         keep = (classes == PERSON_CLASS) & (scores >= DET_SCORE)
-        return boxes[keep] * np.array([image.height, image.width, image.height, image.width])   # boxes are 0..1
+        pixels = boxes[keep] * np.array([image.height, image.width, image.height, image.width])   # boxes are 0..1
+        return np.column_stack([pixels, scores[keep]])
 
 
 def load_detector() -> PersonDetector:
     return PersonDetector(ensure_detector())
 
 
-def detect_people(detector: PersonDetector, image: Image.Image) -> np.ndarray:
-    return detector(image)
+def merge_boxes(boxes: np.ndarray, iou_limit: float, contain_limit: float) -> np.ndarray:
+    """Keep the most confident box for each person. A box is a duplicate if it overlaps a kept one by more than
+    iou_limit, or if more than contain_limit of the smaller box lies inside it (a person cut in half by a tile edge)."""
+    kept = []
+    for box in boxes[np.argsort(-boxes[:, 4])]:
+        duplicate = False
+        for other in kept:
+            h = max(0, min(box[2], other[2]) - max(box[0], other[0]))
+            w = max(0, min(box[3], other[3]) - max(box[1], other[1]))
+            shared = w * h
+            a = (box[2] - box[0]) * (box[3] - box[1])
+            b = (other[2] - other[0]) * (other[3] - other[1])
+            if shared / (a + b - shared + 1e-9) > iou_limit or shared / (min(a, b) + 1e-9) > contain_limit:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(box)
+    return np.array(kept, dtype=np.float32).reshape(-1, 5)
+
+
+def tile_grid(width: int, height: int) -> list[tuple[int, int, int, int]]:
+    """Four overlapping tiles as (left, top, right, bottom)."""
+    tile_w, tile_h = width / (2 - TILE_OVERLAP), height / (2 - TILE_OVERLAP)
+    return [(round(i * tile_w * (1 - TILE_OVERLAP)), round(j * tile_h * (1 - TILE_OVERLAP)),
+             round(i * tile_w * (1 - TILE_OVERLAP) + tile_w), round(j * tile_h * (1 - TILE_OVERLAP) + tile_h))
+            for j in range(2) for i in range(2)]
+
+
+def detect_people(detector: PersonDetector, image: Image.Image) -> tuple[np.ndarray, int]:
+    """Returns (merged person boxes, how many the whole-photo pass found). Tiles run only for groups of 5 or more."""
+    raw = detector(image)
+    whole = merge_boxes(raw, FULL_IOU, FULL_IOM)
+    if len(whole) < TILE_TRIGGER:
+        return whole, len(whole)
+    parts = [raw]
+    for left, top, right, bottom in tile_grid(image.width, image.height):
+        found = detector(image.crop((left, top, right, bottom))).copy()
+        found[:, [0, 2]] += top
+        found[:, [1, 3]] += left
+        parts.append(found)
+    return merge_boxes(np.concatenate(parts), TILE_IOU, TILE_IOM), len(whole)
+
+
+def box_coverage(boxes: np.ndarray, image: Image.Image) -> float:
+    """Total box area as a share of the photo. Real crowds fill the frame with boxes; a group in a scene doesn't."""
+    return float(((boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])).sum() / (image.width * image.height))
 
 
 def draw_boxes(image: Image.Image, boxes: np.ndarray) -> Image.Image:
@@ -175,7 +228,7 @@ def draw_boxes(image: Image.Image, boxes: np.ndarray) -> Image.Image:
     out = image.copy()
     draw = ImageDraw.Draw(out)
     width = max(2, round(min(image.size) / 250))
-    for i, (top, left, bottom, right) in enumerate(sorted(boxes, key=lambda b: b[1]), start=1):
+    for i, (top, left, bottom, right) in enumerate(sorted(boxes[:, :4].tolist(), key=lambda b: b[1]), start=1):
         draw.rectangle([left, top, right, bottom], outline="#38BDAE", width=width)
         label = str(i)
         tw, th = draw.textbbox((0, 0), label)[2:]
@@ -196,15 +249,18 @@ def count_auto(image: Image.Image, models: dict, detector) -> CountResult:
     """Pick the right method for the photo and count. `models` holds the "street" and "dense" CSRNets."""
     street_map = predict_density(models["street"], image)
     street = float(max(street_map.sum(), 0))
+    boxes, whole_photo = detect_people(detector, image)
     if street <= SMALL_GROUP_MAX:
-        boxes = detect_people(detector, image)
-        if len(boxes) < DET_MAX:   # a full 25 may mean the detector ran out of slots: fall back to CSRNet
+        # A full 25 may mean the detector ran out of slots: trust it only if the tiles found more people.
+        if whole_photo < DET_MAX or len(boxes) > DET_MAX:
             return CountResult(float(len(boxes)), "detector", draw_boxes(image, boxes), street)
         return CountResult(street, "street", heatmap_overlay(image, street_map), street)
     dense_map = predict_density(models["dense"], image)
     dense = float(max(dense_map.sum(), 0))
-    if dense > DENSE_SWITCH:
+    if dense > DENSE_SWITCH:   # checked first: in a packed crowd the detector finds only a few faces
         return CountResult(dense, "dense", heatmap_overlay(image, dense_map), street)
+    if len(boxes) >= GROUP_MIN and box_coverage(boxes, image) < GROUP_COVER:   # CSRNet overcounting a group
+        return CountResult(float(len(boxes)), "detector", draw_boxes(image, boxes), street)
     return CountResult(street, "street", heatmap_overlay(image, street_map), street)
 
 

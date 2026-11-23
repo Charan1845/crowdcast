@@ -62,6 +62,7 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 
 ### COCO val2017 (subset)
 - **What:** Everyday photos with every person outlined, from the [COCO](https://cocodataset.org) 2017 validation set. Used only to **test** counting on small groups, never to train CSRNet. The EfficientDet detector was pretrained on COCO's *train* set, which doesn't overlap with val.
+- **Larger groups:** see the Open Images section below, since COCO has no photo with more than 13 labelled people.
 - **Subset used** (`data/coco/small_groups.csv`, not committed): 225 photos, 75 each with 1–5, 6–10 and 11–13 (the bin is labelled "11-20", but no photo passing the filters has more than 13) people. Kept only photos where no region is marked "crowd" and **every** person is at least 3% of the photo's height, so the true count is unambiguous. COCO has almost no fully labelled photos with 21+ people. Each group is split 25 validation (for tuning) and 50 test (final check only).
 - **Get it:** `annotations_trainval2017.zip` (253 MB, only `instances_val2017.json` used) plus the 225 images from `images.cocodataset.org/val2017/`.
 - **License:** annotations CC BY 4.0. Images are from Flickr under their own licenses, so they're used locally for evaluation and not redistributed.
@@ -89,3 +90,10 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 2. **Melbourne:** researched for forecasting, not used (see DECISIONS #8 and #9)
 3. **Mall:** test counting on video frames
 4. **JHU-Crowd++ / UCF-QNRF:** optional, if time allows
+
+## Open Images (validation set, larger-group subset)
+
+- **Used for:** tuning and testing counts of 14–38 people ([notebook 07](notebooks/07_large_groups.ipynb)).
+- **Source:** [Open Images](https://storage.googleapis.com/openimages/web/download_v7.html) validation boxes (Person, Man, Woman, Boy, Girl).
+- **Subset used** (`data/openimages/large_groups.csv`, not committed): 52 photos with 14–38 people, 26 tuning and 26 test. Photos with a "group of people" box or a depiction of a person are excluded, and overlapping boxes for the same person are merged.
+- **License:** annotations CC BY 4.0. Images are listed as CC BY 2.0, so they're used locally for evaluation and not redistributed.

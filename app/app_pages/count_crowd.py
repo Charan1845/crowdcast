@@ -1,14 +1,18 @@
 """Page: upload a crowd photo, get a people count with boxes (small groups) or a heatmap (crowds)."""
+import hashlib
+
 import streamlit as st
 from PIL import UnidentifiedImageError
 
 import crowd_model as cm
-from shared import count_photo, png_bytes
+from feedback import save_feedback
+from shared import count_photo, feedback_configured, png_bytes
 
 REPO_URL = "https://github.com/Charan1845/crowdcast"
+feedback_ready = feedback_configured()
 METHOD_TEXT = {
     "detector": ("Each person found", ":material/person_search:",
-                 "A small group: a person detector (EfficientDet, trained on everyday photos) found and boxed each person."),
+                 "A group: a person detector (EfficientDet, trained on everyday photos) found and boxed each person."),
     "street": ("Crowd density", ":material/blur_on:",
                "A crowd: CSRNet estimated the count from a density map of where people are (Street scene model)."),
     "dense": ("Dense crowd density", ":material/blur_on:",
@@ -18,7 +22,7 @@ METHOD_TEXT = {
 # ---------- Header ----------
 st.title("Count the crowd in any photo")
 st.markdown("Upload a photo, from a small group to a packed stadium. Crowdcast picks the right method by itself: "
-            "it **boxes each person** in small groups, and estimates **crowd density** for big crowds.")
+            "it **boxes each person** in groups, and estimates **crowd density** for big crowds.")
 with st.container(horizontal=True, gap="small"):
     st.badge("VGG-16 CSRNet", icon=":material/neurology:", color="primary")
     st.badge("EfficientDet person detector", icon=":material/person_search:", color="gray")
@@ -32,15 +36,18 @@ with controls:
     with st.container(border=True):
         st.subheader(":material/photo_camera: Your photo")
         uploaded = st.file_uploader("Crowd photo", type=["jpg", "jpeg", "png"], key="photo")
-        st.caption(":material/lock: Photos are only used to count people and are not stored.")
+        st.caption(":material/lock: Photos are only used to count people and are not stored"
+                   + (", unless you choose to share one with a correction." if feedback_ready else "."))
 
     with st.expander(":material/help: How does it choose?"):
         st.markdown(
-            f"1. A crowd model (CSRNet) makes a first estimate.\n"
-            f"2. **{cm.SMALL_GROUP_MAX} people or fewer:** a person detector counts each person exactly and draws a box "
-            f"around them. The crowd model overcounts small groups photographed at eye level.\n"
-            f"3. **More than that:** the crowd model's density estimate is used, since detectors miss people "
-            f"when heads overlap. If the dense-crowd model sees more than {cm.DENSE_SWITCH} people, its estimate is used."
+            f"1. A crowd model (CSRNet) makes a first estimate, and a person detector looks for each person. "
+            f"For bigger groups it also checks four overlapping parts of the photo.\n"
+            f"2. **{cm.SMALL_GROUP_MAX} people or fewer:** the detector's count is used, with a box around each person. "
+            f"The crowd model overcounts groups photographed at eye level.\n"
+            f"3. **More than that:** if the dense-crowd model sees more than {cm.DENSE_SWITCH} people, its estimate is used. "
+            f"Otherwise, if the detector found a group that fills only part of the photo, its count is used. "
+            f"If not, the street-crowd model's density estimate is used."
         )
 
 # ---------- Results ----------
@@ -86,13 +93,38 @@ with results:
         if resized:
             st.caption("Scaled down to 1024 px on its longest side, the size the models were trained on.")
 
+    # ---------- Feedback (only when the private dataset is configured) ----------
+    if feedback_ready:
+        photo_id = hashlib.sha256(uploaded.getvalue()).hexdigest()
+        if st.session_state.get("feedback_sent") == photo_id:
+            st.success("Thanks! Your correction was saved.", icon=":material/check_circle:")
+        else:
+            with st.expander(":material/edit: Wrong count? Tell us the correct one"):
+                with st.form("feedback_form", border=False):
+                    correct = st.number_input("Correct number of people", min_value=0, max_value=100_000,
+                                              value=round(result.count), step=1)
+                    share_photo = st.checkbox("Also save this photo to help improve the model",
+                                              help="Off by default. Saved privately, without its EXIF data "
+                                                   "(location, device). Only share photos you have the right to share.")
+                    submitted = st.form_submit_button("Send correction", icon=":material/send:")
+                if submitted:
+                    try:
+                        with st.spinner("Saving..."):
+                            save_feedback(st.secrets["HF_TOKEN"], st.secrets["HF_FEEDBACK_REPO"], result,
+                                          int(correct), image, share_photo)
+                    except Exception:
+                        st.error("Couldn't save that right now. Please try again later.", icon=":material/error:")
+                    else:
+                        st.session_state["feedback_sent"] = photo_id
+                        st.rerun()
+
 # ---------- Footer ----------
 st.divider()
 with st.expander(":material/info: About the models"):
     st.markdown(
         f"""
-**Small groups: EfficientDet-Lite4 person detector** (TensorFlow Lite, pretrained on the COCO dataset of everyday photos).
-It finds each person and draws a box, so the count is exact when people are clearly visible.
+**Groups: EfficientDet-Lite4 person detector** (TensorFlow Lite, pretrained on the COCO dataset of everyday photos).
+It finds each person and draws a box, which works best when people are clearly visible.
 
 **Crowds: CSRNet** (density estimation) with a **VGG-16** front end pretrained on ImageNet, fine-tuned on ShanghaiTech.
 Instead of drawing a box around each person, which fails when heads overlap, it predicts a density map, and the count is its sum.
