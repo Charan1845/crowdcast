@@ -18,7 +18,7 @@ A Streamlit app: upload any photo, from a small group to a packed stadium. It pi
 - **Small groups:** a person detector finds each person, draws a numbered box around them, and gives an **exact count**.
 - **Crowds:** CSRNet estimates the count from a **density map** and shows a heatmap of where the crowd is.
 
-> 🚧 **In progress:** a final check of the hybrid on held-out test photos, better handling of large groups, and a feedback loop. See [Progress](#progress).
+> 🚧 **In progress:** better handling of large groups, and a feedback loop. See [Progress](#progress).
 
 ## How it works
 
@@ -85,10 +85,23 @@ Why each choice was made (CSRNet over YOLO, transfer learning, Streamlit): [DECI
 - **v1 → v2 changes:** a lower learning rate, fine-tuning only VGG-16's last block, a larger validation set, and more epochs with learning-rate halving. v2 beats v1 at every crowd size.
 - Notebooks: [v1](notebooks/01_counting_model_partA.ipynb), [v2 with the v1 vs v2 comparison](notebooks/02_counting_model_partA_v2.ipynb)
 
+### Hybrid counter: final test on held-out photos
+
+Scored once, with the thresholds frozen ([notebook 06](notebooks/06_hybrid_heldout_test.ipynb)). "Old" is the previous app with the right model picked by hand for each set, which is the best it could do.
+
+| Test photos | Old MAE | Hybrid MAE | Change |
+|---|---|---|---|
+| Everyday groups, 1–13 people (COCO, 150 photos) | 6.52 | **3.53** | 46% better |
+| Dense crowds (ShanghaiTech A, 182 photos) | 79.6 | 87.0 | 9% worse |
+| Street crowds (ShanghaiTech B, 316 photos) | 13.4 | 17.0 | 27% worse |
+
+The hybrid is much better on the everyday photos it was built for, and gives up some crowd accuracy because it has to work out the crowd type by itself. Exact counts on everyday groups rose from 18% to 39%.
+
 ## Limitations
 
 - **Counting models** were trained on ShanghaiTech photos. Photos with very different angles, lighting or places may count less accurately. Both models still overcount sparse scenes a little.
-- **Small groups at eye level** used to be badly overcounted by CSRNet: on 225 everyday COCO photos with 1–20 people it was off by 7.2 people on average, and overcounted by 6.0 ([diagnosis](notebooks/05_accuracy_diagnosis.ipynb)). The hybrid fixes most of this (validation error 8.5 → 3.4 people). The final held-out test is still to come.
+- **Small groups at eye level** used to be badly overcounted by CSRNet: on 225 everyday COCO photos with 1–13 people it was off by 7.2 people on average, and overcounted by 6.0 ([diagnosis](notebooks/05_accuracy_diagnosis.ipynb)). The hybrid cuts the error on held-out photos from 6.52 to 3.53, but it is still only exact on 39% of them.
+- **Eye-level groups of 14 or more people are untested**, and groups of 26 or more are beyond what the detector can return.
 - **The detector counts people it can see.** Heavily hidden people, or groups larger than about 40, go to CSRNet instead.
 
 ## Project layout
@@ -99,6 +112,7 @@ notebooks/
   02_counting_model_partA_v2.ipynb   improved v2 + v1 vs v2 comparison
   03_counting_model_partB.ipynb      CSRNet on ShanghaiTech B
   05_accuracy_diagnosis.ipynb        train/val/test check + everyday small-group photos (COCO)
+  06_hybrid_heldout_test.ipynb       final test of the hybrid counter on held-out photos
 app/
   streamlit_app.py                   entry point
   app_pages/count_crowd.py           the counting page
@@ -152,4 +166,5 @@ Checks the automatic method choice (detector for small groups, Street or Dense C
 - [x] Removed the metro "best time to travel" feature to focus on counting accuracy (see [DECISIONS.md](DECISIONS.md) #9)
 - [x] Measured train vs validation vs test error, and error on a real-world small-group test set ([notebook 05](notebooks/05_accuracy_diagnosis.ipynb))
 - [x] Hybrid counting: a person detector for small groups (exact counts with boxes), CSRNet for dense crowds, chosen automatically
+- [x] Final test of the hybrid on held-out photos ([notebook 06](notebooks/06_hybrid_heldout_test.ipynb))
 - [ ] Feedback loop: users can report the correct count to help improve the model

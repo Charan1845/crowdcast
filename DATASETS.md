@@ -62,7 +62,7 @@ Research notes on the datasets Crowdcast plans to use: where to get them, what's
 
 ### COCO val2017 (subset)
 - **What:** Everyday photos with every person outlined, from the [COCO](https://cocodataset.org) 2017 validation set. Used only to **test** counting on small groups, never to train CSRNet. The EfficientDet detector was pretrained on COCO's *train* set, which doesn't overlap with val.
-- **Subset used** (`data/coco/small_groups.csv`, not committed): 225 photos, 75 each with 1–5, 6–10 and 11–20 people. Kept only photos where no region is marked "crowd" and **every** person is at least 3% of the photo's height, so the true count is unambiguous. COCO has almost no fully labelled photos with 21+ people. Each group is split 25 validation (for tuning) and 50 test (final check only).
+- **Subset used** (`data/coco/small_groups.csv`, not committed): 225 photos, 75 each with 1–5, 6–10 and 11–13 (the bin is labelled "11-20", but no photo passing the filters has more than 13) people. Kept only photos where no region is marked "crowd" and **every** person is at least 3% of the photo's height, so the true count is unambiguous. COCO has almost no fully labelled photos with 21+ people. Each group is split 25 validation (for tuning) and 50 test (final check only).
 - **Get it:** `annotations_trainval2017.zip` (253 MB, only `instances_val2017.json` used) plus the 225 images from `images.cocodataset.org/val2017/`.
 - **License:** annotations CC BY 4.0. Images are from Flickr under their own licenses, so they're used locally for evaluation and not redistributed.
 
