@@ -18,8 +18,9 @@ def get_detector():
 
 
 @st.cache_data(show_spinner=False, max_entries=20)
-def count_photo(image_bytes: bytes):
-    """Returns (image, CountResult, was_resized). Picks detector or CSRNet automatically."""
+def count_photo(image_bytes: bytes, counting_version: str = ""):
+    """Returns (image, CountResult, was_resized). Picks detector or CSRNet automatically.
+    counting_version is part of the cache key, so a change to the counting code can't serve old answers."""
     image, resized = cm.prepare_image(Image.open(io.BytesIO(image_bytes)))
     result = cm.count_auto(image, {"street": get_model("street"), "dense": get_model("dense")}, get_detector())
     return image, result, resized

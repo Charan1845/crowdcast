@@ -64,7 +64,7 @@ with results:
 
     try:
         with st.spinner("Counting people..."):
-            image, result, resized = count_photo(uploaded.getvalue())
+            image, result, resized = count_photo(uploaded.getvalue(), cm.COUNTING_VERSION)
     except UnidentifiedImageError:
         st.error("That file couldn't be read as an image. Try a JPG or PNG.", icon=":material/broken_image:")
         st.stop()
