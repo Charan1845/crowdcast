@@ -126,6 +126,8 @@ TILE_TRIGGER = 5            # run the tiles when the whole photo shows at least 
 TILE_OVERLAP = 0.25         # how much neighbouring tiles overlap, so nobody is lost on a tile edge
 FULL_IOU, FULL_IOM = 0.5, 0.85   # duplicate-box limits for the whole-photo pass
 TILE_IOU, TILE_IOM = 0.4, 0.7    # stricter limits once tiles are merged in (one person can appear in two tiles)
+CUT_MARGIN = 0.02           # a box this close to an inner tile edge (share of tile size) was cut off by that edge
+JOIN_ALIGN = 0.5            # two cut boxes are one person if they line up by at least this much along the edge
 GROUP_MIN = 8               # CSRNet says "crowd", but the detector found at least this many people...
 GROUP_COVER = 0.15          # ...and their boxes cover under this share of the photo: it's a group, trust the detector
 
@@ -202,19 +204,53 @@ def tile_grid(width: int, height: int) -> list[tuple[int, int, int, int]]:
             for j in range(2) for i in range(2)]
 
 
+def join_cut_boxes(tiles: list[tuple[tuple[int, int, int, int], np.ndarray]], width: int, height: int) -> np.ndarray:
+    """A person too big for one tile is found as two halves. Join halves that meet across a tile edge into one box."""
+    items = []
+    for index, ((left, top, right, bottom), found) in enumerate(tiles):
+        margin = CUT_MARGIN * max(right - left, bottom - top)
+        for box in found:
+            items.append((box, index, bottom < height and box[2] >= bottom - margin, top > 0 and box[0] <= top + margin,
+                          right < width and box[3] >= right - margin, left > 0 and box[1] <= left + margin))
+    pairs = []
+    for i, (a, tile_a, cut_bottom, _, cut_right, _) in enumerate(items):
+        for j, (b, tile_b, _, cut_top, _, cut_left) in enumerate(items):
+            if tile_a == tile_b:
+                continue
+            if cut_bottom and cut_top:       # top and bottom halves must line up left to right
+                start, end = 1, 3
+            elif cut_right and cut_left:     # left and right halves must line up top to bottom
+                start, end = 0, 2
+            else:
+                continue
+            shared = min(a[end], b[end]) - max(a[start], b[start])
+            span = max(a[end], b[end]) - min(a[start], b[start])
+            if shared > 0 and shared / span >= JOIN_ALIGN:
+                pairs.append((shared / span, i, j))
+    used, joined = set(), []
+    for _, i, j in sorted(pairs, key=lambda pair: -pair[0]):
+        if i not in used and j not in used:
+            used |= {i, j}
+            a, b = items[i][0], items[j][0]
+            joined.append([min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]), max(a[4], b[4])])
+    rest = [item[0].tolist() for n, item in enumerate(items) if n not in used]
+    return np.array(joined + rest, dtype=np.float32).reshape(-1, 5)
+
+
 def detect_people(detector: PersonDetector, image: Image.Image) -> tuple[np.ndarray, int]:
     """Returns (merged person boxes, how many the whole-photo pass found). Tiles run only for groups of 5 or more."""
     raw = detector(image)
     whole = merge_boxes(raw, FULL_IOU, FULL_IOM)
     if len(whole) < TILE_TRIGGER:
         return whole, len(whole)
-    parts = [raw]
+    tiles = []
     for left, top, right, bottom in tile_grid(image.width, image.height):
         found = detector(image.crop((left, top, right, bottom))).copy()
         found[:, [0, 2]] += top
         found[:, [1, 3]] += left
-        parts.append(found)
-    return merge_boxes(np.concatenate(parts), TILE_IOU, TILE_IOM), len(whole)
+        tiles.append(((left, top, right, bottom), found))
+    joined = join_cut_boxes(tiles, image.width, image.height)
+    return merge_boxes(np.concatenate([raw, joined]), TILE_IOU, TILE_IOM), len(whole)
 
 
 def box_coverage(boxes: np.ndarray, image: Image.Image) -> float:

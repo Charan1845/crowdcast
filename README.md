@@ -108,18 +108,21 @@ Measured on photos with 14–38 separately labelled people from Open Images ([no
 
 | Test photos | Before | After |
 |---|---|---|
-| Groups of 14–38 people (Open Images, 26 photos) | 25.4 | **18.2** |
-| Everyday groups, 1–13 people (COCO, 150 photos) | 3.53 | 3.43 |
+| Groups of 14–38 people (Open Images, 26 photos) | 25.4 | **18.5** |
+| Everyday groups, 1–13 people (COCO, 150 photos) | 3.53 | 3.45 |
 | Dense crowds (ShanghaiTech A, 182 photos) | 87.0 | 86.9 |
-| Street crowds (ShanghaiTech B, 316 photos) | 17.0 | 16.3 |
+| Street crowds (ShanghaiTech B, 316 photos) | 17.0 | 16.2 |
 
-The first version made dense crowds much worse (123.3). The test caught it, and the Dense check now runs first. Because that fix came after seeing the test, these "After" numbers aren't a clean held-out score. An independent check on 255 ShanghaiTech A training photos agrees (67.0 before, 107.4 first version, 66.8 fixed). With only 26 group photos, treat the 18.2 as a rough figure.
+The first version made dense crowds much worse (123.3). The test caught it, and the Dense check now runs first. Because that fix came after seeing the test, these "After" numbers aren't a clean held-out score. An independent check on 255 ShanghaiTech A training photos agrees (67.0 before, 107.4 first version, 66.8 fixed). With only 26 group photos, treat the 18.5 as a rough figure.
+
+These numbers include a later fix for people cut in half by a tile edge and counted twice ([notebook 08](notebooks/08_tile_join_fix.ipynb)). A photo of 11 players went from 18 to 9. It cost a little on larger groups (18.2 to 18.5, median error 3.5 to 4.5).
 
 ## Limitations
 
 - **Counting models** were trained on ShanghaiTech photos. Photos with very different angles, lighting or places may count less accurately. Both models still overcount sparse scenes a little.
 - **Small groups at eye level** used to be badly overcounted by CSRNet: on 225 everyday COCO photos with 1–13 people it was off by 7.2 people on average, and overcounted by 6.0 ([diagnosis](notebooks/05_accuracy_diagnosis.ipynb)). The hybrid cuts the error on held-out photos from 6.52 to 3.53, but it is still only exact on 39% of them.
-- **Larger groups are improved, not solved.** On 26 test photos of 14–38 people the typical error is 3.5 people, but 3 photos were still off by 30 or more.
+- **Larger groups are improved, not solved.** On 26 test photos of 14–38 people the typical error is 4.5 people, and 4 photos are still off by 30 or more.
+- **Tall people standing close together can still be miscounted.** A line of 11 players is counted as 9.
 - **Eye-level groups of about 40–150 people are unmeasured**, because no suitable labelled photos were available.
 - **The detector counts people it can see.** Heavily hidden people, or groups larger than about 40, go to CSRNet instead.
 
@@ -133,6 +136,7 @@ notebooks/
   05_accuracy_diagnosis.ipynb        train/val/test check + everyday small-group photos (COCO)
   06_hybrid_heldout_test.ipynb       final test of the hybrid counter on held-out photos
   07_large_groups.ipynb              tiling and a group check for 14–38 people (Open Images)
+  08_tile_join_fix.ipynb             joining people cut in half by a tile edge
 app/
   streamlit_app.py                   entry point
   app_pages/count_crowd.py           the counting page

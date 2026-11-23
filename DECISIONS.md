@@ -77,6 +77,11 @@ Every major decision for Crowdcast, with the reasoning. Newest decisions at the 
 **Decision:** Visitors can report the correct count. Each correction is saved with the model's answer and method, and no visitor details. A photo is saved only if the visitor ticks a box, re-encoded so EXIF data (location, device) is removed. The code refuses to write to a dataset that isn't private, and the form stays hidden until the `HF_TOKEN` and `HF_FEEDBACK_REPO` secrets are set.
 **Why:** Friends' real photos exposed the biggest weakness in the app, so real corrections are the most useful data for future improvements.
 
+### 15. Join people cut in half by a tile edge (2026-11-23)
+**Decision:** When two boxes are both cut by a tile edge and line up by at least 0.5 across it, they count as one person. The limit was chosen on tuning photos only.
+**Why:** A photo of 11 players was counted as 18, because people too tall for one tile were found as two halves. It now counts 9.
+**Cost, accepted knowingly:** groups of 14–38 went from MAE 18.2 to 18.53 (median 3.5 → 4.5, within 2 people 27% → 19%). COCO 3.43 → 3.45, ShanghaiTech B 16.3 → 16.24, A stayed at 86.9. The fix did not meet the rule of leaving larger groups no worse, and was shipped because the double counting is a visible error on ordinary photos ([notebook 08](notebooks/08_tile_join_fix.ipynb)).
+
 ---
 
 ## Open decisions
